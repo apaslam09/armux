@@ -12,7 +12,8 @@ public static class Ui
         Close = "", Folder = "", Terminal = "", Globe = "", Pin = "", Search = "";
 
     public const string Explorer = "\uEC50", FolderOpen = "\uE838", ChevronRight = "\uE76C", ChevronDown = "\uE70D",
-        ChevronUp = "\uE70E", Document = "\uE8A5", Code = "\uE943", Photo = "\uE91B", Gear = "\uE713", Page = "\uE7C3";
+        ChevronUp = "\uE70E", Document = "\uE8A5", Code = "\uE943", Photo = "\uE91B", Gear = "\uE713", Page = "\uE7C3",
+        Up = "\uE74A", Drive = "\uEDA2", Home = "\uE80F", Places = "\uE81D";
 
     public static FontIcon Glyph(string glyph, double size, Brush fg) =>
         new() { Glyph = glyph, FontFamily = new FontFamily("Segoe Fluent Icons"), FontSize = size, Foreground = fg };

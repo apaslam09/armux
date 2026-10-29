@@ -56,20 +56,42 @@ public sealed partial class MainWindow
             return;
         }
         var home = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
-        var root = FileTree.Resolve(ws.Cwd, home, out bool exact);
-        if (!trees.TryGetValue(root, out var tree)) trees[root] = tree = new FileTree(root);
+        // A folder browsed to stays until "back to the terminal's folder"; without one the explorer follows cd.
+        bool following = !(explorerRoots.TryGetValue(ws, out var browsed) && Directory.Exists(browsed));
+        if (following) explorerRoots.Remove(ws);
+        bool exact = true;
+        var root = following ? FileTree.Resolve(ws.Cwd, home, out exact) : browsed!;
+        if (!trees.TryGetValue(root, out var tree))
+        {
+            // Trees of folders browsed past are dropped; the workspace folders' trees keep their expanded folders.
+            foreach (var old in trees.Keys.Where(k => !state.Workspaces.Any(w => FileTree.Resolve(w.Cwd, home, out _).Equals(k, StringComparison.OrdinalIgnoreCase))
+                && !explorerRoots.Values.Contains(k, StringComparer.OrdinalIgnoreCase)).ToList())
+                trees.Remove(old);
+            trees[root] = tree = new FileTree(root);
+        }
         if (explorer is null)
         {
-            explorer = new ExplorerPanel(tree, ws.Cwd, exact, this);
+            explorer = new ExplorerPanel(tree, ws.Cwd, exact, following, this);
             explorerHost.Child = explorer;
         }
         else
         {
-            if (!ReferenceEquals(explorer.Tree, tree)) explorer.SetRoot(tree, ws.Cwd, exact);
+            if (!ReferenceEquals(explorer.Tree, tree) || explorer.Following != following) explorer.SetRoot(tree, ws.Cwd, exact, following);
             explorer.Resume();
         }
         explorerHost.Visibility = Visibility.Visible;
         explorerCol.Width = new GridLength(ExplorerWidth);
+    }
+
+    /// <summary>Folders browsed to in the explorer, per workspace. While one is set the explorer does not follow cd.</summary>
+    readonly Dictionary<Workspace, string> explorerRoots = [];
+
+    public void Navigate(string? folder)
+    {
+        if (state.Current is not { } ws) return;
+        if (folder is null) explorerRoots.Remove(ws);
+        else explorerRoots[ws] = Path.TrimEndingDirectorySeparator(Path.GetFullPath(folder));
+        RenderExplorer(rebuild: false);
     }
 
     public void OpenFile(string path, bool newPane)

@@ -230,8 +230,8 @@ public sealed partial class MainWindow
     }
 
     /// <summary>
-    /// Text typed for files dropped on a terminal: each path relative to the terminal's directory when it is inside
-    /// it (otherwise absolute), quoted for the shell when needed, separated by spaces.
+    /// Text typed for files dropped on a terminal: each path relative to the terminal's directory (up to three ..\
+    /// levels; further away or on another drive it is absolute), quoted for the shell when needed, separated by spaces.
     /// </summary>
     string DropText(Surface surface, IReadOnlyList<string> paths)
     {
@@ -239,14 +239,15 @@ public sealed partial class MainWindow
         string? cwd = sessions.GetValueOrDefault(surface)?.Cwd
             ?? (Locate(surface)?.Ws.Cwd is { } c ? FileTree.Resolve(c, home, out _) : null);
         bool cmd = Shells.Parse(surface.Shell) == ShellKind.Cmd;
-        return string.Join(" ", paths.Select(p => QuotePath(RelativePath(cwd, p), cmd)));
+        return string.Join(" ", paths.Select(p => QuotePath(FileTree.DropPath(cwd, p), cmd)));
     }
 
-    static string RelativePath(string? cwd, string path)
+    /// <summary>The explorer's "Insert path in terminal": types the path into the focused pane's terminal.</summary>
+    public void InsertPath(string path)
     {
-        if (cwd is null) return path;
-        var rel = Path.GetRelativePath(cwd, path);
-        return rel.StartsWith("..", StringComparison.Ordinal) || Path.IsPathRooted(rel) ? path : rel;
+        if (Focused?.Selected is not { Kind: PanelKind.Terminal, Live: true } s) return;
+        SessionFor(s).Paste(DropText(s, [path]));
+        FocusKeys();
     }
 
     static readonly char[] ShellSpecial = [' ', '&', '(', ')', ';', '\'', '$', '`', ','];

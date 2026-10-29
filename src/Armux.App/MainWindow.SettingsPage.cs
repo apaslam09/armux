@@ -4,6 +4,7 @@ using System.Runtime.InteropServices;
 using Armux.Core;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
+using Microsoft.UI.Xaml.Controls.Primitives;
 using Microsoft.UI.Xaml.Input;
 using Microsoft.UI.Xaml.Media;
 using Microsoft.UI.Xaml.Media.Imaging;
@@ -13,20 +14,22 @@ using Windows.System;
 namespace Armux.App;
 
 /// <summary>
-/// The Settings page (cmux ⌘,; Ctrl+Shift+, here): a full page over the workspace with sections on the left.
-/// Every control applies and saves at once. The page is built when opened and dropped when closed.
+/// The Settings page (cmux ⌘,; Ctrl+Shift+, here), laid out like Zed's settings editor (deviation D-31): a search box
+/// and the sections on the left, flat rows of settings on the right, and "Edit in settings.json" for the file itself.
+/// It covers the whole window and hides the title bar's workspace buttons until it closes. Every control applies and
+/// saves at once. The page is built when opened and dropped when closed.
 /// </summary>
 public sealed partial class MainWindow
 {
-    static readonly (string Name, string Glyph)[] SettingsSections =
-    [
-        ("General", ""), ("Appearance", ""), ("Terminal", ""), ("Keyboard", ""),
-        ("Notifications", ""), ("Browser", ""), ("About", ""),
-    ];
+    static readonly string[] SettingsSections = ["General", "Appearance", "Terminal", "Keyboard", "Notifications", "Browser", "About"];
 
     Grid? settingsPage;
     ScrollViewer? settingsScroll;
+    StackPanel? settingsNav;
+    TextBox? settingsSearch;
     string settingsSection = "General";
+    /// <summary>Text in the search box: while it is not empty the page lists matching settings from every section.</summary>
+    string settingsQuery = "";
     string keyFilter = "";
     /// <summary>The shortcut being recorded: the command and the button showing "Press a shortcut…".</summary>
     (string Id, Button Button, TextBlock Note)? recordingShortcut;
@@ -46,10 +49,11 @@ public sealed partial class MainWindow
         if (settingsPage is not null) root.Children.Remove(settingsPage);
         settingsSection = section;
         recordingShortcut = null;
-        settingsPage = BuildSettingsPage(section);
+        settingsPage = BuildSettingsPage();
         Grid.SetRow(settingsPage, 1);
         Canvas.SetZIndex(settingsPage, 50);
         root.Children.Add(settingsPage);
+        UpdateTitle();
         if (offset > 0) DispatcherQueue.TryEnqueue(Microsoft.UI.Dispatching.DispatcherQueuePriority.Low, () => settingsScroll?.ChangeView(null, offset, null, true));
     }
 
@@ -59,38 +63,94 @@ public sealed partial class MainWindow
         root.Children.Remove(settingsPage);
         settingsPage = null;
         settingsScroll = null;
+        settingsNav = null;
+        settingsSearch = null;
+        settingsQuery = "";
         recordingShortcut = null;
+        UpdateTitle();
         FocusKeys();
     }
 
-    Grid BuildSettingsPage(string section)
+    /// <summary>Esc on the page: clear the search first, then close.</summary>
+    void EscapeSettingsPage()
+    {
+        if (settingsSearch is { Text.Length: > 0 } s) s.Text = "";
+        else CloseSettingsPage();
+    }
+
+    /// <summary>Zed's "Edit in settings.json": the file opens as an editable tab; saving it applies the settings.</summary>
+    void OpenSettingsJson()
+    {
+        if (!File.Exists(SettingsPath))
+            try { Theme.Settings.Save(SettingsPath); }
+            catch (Exception e) when (e is IOException or UnauthorizedAccessException) { App.Log(nameof(OpenSettingsJson), e); }
+        CloseSettingsPage();
+        OpenFile(SettingsPath, newPane: false);
+    }
+
+    Grid BuildSettingsPage()
     {
         var page = new Grid { Background = Theme.Brush("Pane") };
-        page.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(230) });
+        StyleSettingsControls(page.Resources);
+        page.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(220) });
         page.ColumnDefinitions.Add(new ColumnDefinition());
         page.PreviewKeyDown += OnRecordKey;
 
-        var nav = new StackPanel { Padding = new Thickness(12, 18, 12, 18), Spacing = 2 };
-        var navHost = new Border { Child = nav, Background = Theme.Brush("Sidebar"), BorderBrush = Theme.Brush("Divider"), BorderThickness = new Thickness(0, 0, 1, 0) };
-        var heading = Ui.Text("Settings", 20, Theme.Brush("Text"), semibold: true);
-        heading.Margin = new Thickness(10, 0, 0, 14);
-        nav.Children.Add(heading);
-        foreach (var (name, glyph) in SettingsSections) nav.Children.Add(NavItem(name, glyph, name == section));
-        page.Children.Add(navHost);
+        var nav = new Grid { Background = Theme.Brush("Sidebar"), BorderBrush = Theme.Brush("Divider"), BorderThickness = new Thickness(0, 0, 1, 0), Padding = new Thickness(10, 12, 10, 12), RowSpacing = 10 };
+        nav.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+        nav.RowDefinitions.Add(new RowDefinition());
+        nav.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+        settingsSearch = Field(settingsQuery, "Search settings…", double.NaN);
+        Microsoft.UI.Xaml.Automation.AutomationProperties.SetName(settingsSearch, "Search settings");
+        settingsSearch.TextChanged += (_, _) => { if (settingsSearch is { } s && s.Text != settingsQuery) { settingsQuery = s.Text; FillSettingsBody(); } };
+        nav.Children.Add(settingsSearch);
+        settingsNav = new StackPanel { Spacing = 1 };
+        Grid.SetRow(settingsNav, 1);
+        nav.Children.Add(settingsNav);
+        var edit = SettingsButton(IconLabel(Ui.Document, "Edit in settings.json"), OpenSettingsJson);
+        edit.HorizontalAlignment = HorizontalAlignment.Stretch;
+        edit.HorizontalContentAlignment = HorizontalAlignment.Left;
+        ToolTipService.SetToolTip(edit, SettingsPath);
+        Grid.SetRow(edit, 2);
+        nav.Children.Add(edit);
+        page.Children.Add(nav);
 
         var right = new Grid();
-        right.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
-        right.RowDefinitions.Add(new RowDefinition());
-        var head = new Grid { Padding = new Thickness(36, 18, 16, 6) };
-        head.ColumnDefinitions.Add(new ColumnDefinition());
-        head.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
-        head.Children.Add(Ui.Text(section, 24, Theme.Brush("Text"), semibold: true));
-        var close = Ui.IconButton(Ui.Glyph(Ui.Close, 12, Theme.Brush("TextDim")), "Close settings (Esc)", CloseSettingsPage, 32);
-        Grid.SetColumn(close, 1);
-        head.Children.Add(close);
-        right.Children.Add(head);
+        settingsScroll = new ScrollViewer { VerticalScrollBarVisibility = ScrollBarVisibility.Auto };
+        right.Children.Add(settingsScroll);
+        var close = Ui.IconButton(Ui.Glyph(Ui.Close, 11, Theme.Brush("TextDim")), "Close settings (Esc)", CloseSettingsPage, 30);
+        close.HorizontalAlignment = HorizontalAlignment.Right;
+        close.VerticalAlignment = VerticalAlignment.Top;
+        close.Margin = new Thickness(0, 10, 14, 0);
+        right.Children.Add(close);
+        Grid.SetColumn(right, 1);
+        page.Children.Add(right);
 
-        var body = new StackPanel { Spacing = 6, MaxWidth = 860, HorizontalAlignment = HorizontalAlignment.Left, Padding = new Thickness(36, 6, 36, 40) };
+        FillSettingsBody();
+        return page;
+    }
+
+    /// <summary>The right side: the current section, or search results from every section.</summary>
+    void FillSettingsBody()
+    {
+        if (settingsScroll is null) return;
+        recordingShortcut = null;
+        var body = new StackPanel { MaxWidth = 780, HorizontalAlignment = HorizontalAlignment.Left, Padding = new Thickness(40, 22, 40, 48) };
+        var q = settingsQuery.Trim();
+        if (q.Length == 0)
+        {
+            body.Children.Add(PageTitle(settingsSection));
+            BuildSection(settingsSection, body);
+        }
+        else SearchSettings(q, body);
+        settingsScroll.Content = body;
+
+        settingsNav?.Children.Clear();
+        foreach (var name in SettingsSections) settingsNav?.Children.Add(NavItem(name, q.Length == 0 && name == settingsSection));
+    }
+
+    void BuildSection(string section, StackPanel body)
+    {
         switch (section)
         {
             case "General": BuildGeneral(body); break;
@@ -101,52 +161,105 @@ public sealed partial class MainWindow
             case "Browser": BuildBrowser(body); break;
             default: BuildAbout(body); break;
         }
-        settingsScroll = new ScrollViewer { Content = body, VerticalScrollBarVisibility = ScrollBarVisibility.Auto };
-        Grid.SetRow(settingsScroll, 1);
-        right.Children.Add(settingsScroll);
-        Grid.SetColumn(right, 1);
-        page.Children.Add(right);
-        return page;
     }
 
-    FrameworkElement NavItem(string name, string glyph, bool active)
+    /// <summary>Zed's settings search: the rows whose title or description match, under the name of their section.</summary>
+    void SearchSettings(string q, StackPanel body)
     {
-        var g = new Grid { Padding = new Thickness(10, 9, 10, 9), CornerRadius = new CornerRadius(6), ColumnSpacing = 12 };
-        g.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
-        g.ColumnDefinitions.Add(new ColumnDefinition());
-        g.Children.Add(Ui.Glyph(glyph, 14, Theme.Brush(active ? "Text" : "TextDim")));
-        var label = Ui.Text(name, 14, Theme.Brush(active ? "Text" : "TextDim"), semibold: active);
-        Grid.SetColumn(label, 1);
-        g.Children.Add(label);
+        body.Children.Add(PageTitle("Search results"));
+        int found = 0;
+        foreach (var section in SettingsSections.Where(s => s is not ("Keyboard" or "About")))
+        {
+            var all = new StackPanel();
+            BuildSection(section, all);
+            var hits = all.Children.Where(e => e is FrameworkElement { Tag: string text } && text.Contains(q, StringComparison.OrdinalIgnoreCase)).ToList();
+            all.Children.Clear();
+            if (hits.Count == 0) continue;
+            body.Children.Add(GroupHeader(section));
+            foreach (var h in hits) body.Children.Add(h);
+            found += hits.Count;
+        }
+        int shortcuts = entries.Count(e => e.Id.Contains(q, StringComparison.OrdinalIgnoreCase)
+            || Chord.Display(keys.Effective(e.Id)).Contains(q, StringComparison.OrdinalIgnoreCase));
+        if (shortcuts > 0)
+        {
+            body.Children.Add(GroupHeader("Keyboard"));
+            body.Children.Add(Card(shortcuts == 1 ? "1 shortcut matches" : $"{shortcuts} shortcuts match", "Commands and keys in the Keyboard section.",
+                ActionButton("Show", () => { keyFilter = q; settingsQuery = ""; ShowSettingsPage("Keyboard"); })));
+            found++;
+        }
+        if (found == 0) body.Children.Add(Ui.Text($"No settings match \"{q}\".", 13.5, Theme.Brush("TextDim")));
+    }
+
+    FrameworkElement NavItem(string name, bool active)
+    {
+        var g = new Grid { Padding = new Thickness(10, 6, 10, 6), CornerRadius = new CornerRadius(5) };
+        g.Children.Add(Ui.Text(name, 13.5, Theme.Brush(active ? "Text" : "TextDim"), semibold: active));
         g.Background = active ? Theme.Brush("SelectedRow") : null;
         if (!active)
         {
             g.PointerEntered += (_, _) => g.Background = Theme.Brush("SidebarHover");
             g.PointerExited += (_, _) => g.Background = null;
         }
-        g.Tapped += (_, _) => ShowSettingsPage(name);
+        g.Tapped += (_, _) => { settingsQuery = ""; ShowSettingsPage(name); };
         Microsoft.UI.Xaml.Automation.AutomationProperties.SetName(g, name);
         return g;
     }
 
     // ---- building blocks ---------------------------------------------------------------------
 
-    static TextBlock GroupHeader(string text)
+    /// <summary>
+    /// Zed's flat controls: buttons, dropdowns and fields on one control color with a thin border, and armux's accent
+    /// for switches and focus instead of the Windows accent. Lightweight styling: these keys are what the built-in
+    /// templates read, overridden for everything on the page.
+    /// </summary>
+    static void StyleSettingsControls(ResourceDictionary r)
     {
-        var t = Ui.Text(text, 14, Theme.Brush("Text"), semibold: true);
-        t.Margin = new Thickness(2, 20, 0, 4);
+        void Set(string brush, params string[] keys) { foreach (var k in keys) r[k] = Theme.Brush(brush); }
+        Set("Control", "ButtonBackground", "ButtonBackgroundDisabled", "ComboBoxBackground", "ComboBoxBackgroundDisabled",
+            "ComboBoxDropDownBackground", "TextControlBackground", "TextControlBackgroundPointerOver", "TextControlBackgroundDisabled");
+        Set("ControlHover", "ButtonBackgroundPointerOver", "ComboBoxBackgroundPointerOver", "ComboBoxBackgroundFocused");
+        Set("SelectedRow", "ButtonBackgroundPressed", "ComboBoxBackgroundPressed");
+        Set("Pane", "TextControlBackgroundFocused");
+        Set("Border", "ButtonBorderBrush", "ButtonBorderBrushPointerOver", "ButtonBorderBrushPressed", "ButtonBorderBrushDisabled",
+            "ComboBoxBorderBrush", "ComboBoxBorderBrushPointerOver", "ComboBoxBorderBrushPressed", "ComboBoxDropDownBorderBrush",
+            "TextControlBorderBrush", "TextControlBorderBrushPointerOver");
+        Set("Accent", "TextControlBorderBrushFocused", "ComboBoxBorderBrushFocused", "ToggleSwitchFillOn", "ToggleSwitchFillOnPointerOver",
+            "ToggleSwitchFillOnPressed", "CheckBoxCheckBackgroundFillChecked", "CheckBoxCheckBackgroundFillCheckedPointerOver",
+            "CheckBoxCheckBackgroundFillCheckedPressed", "CheckBoxCheckBackgroundStrokeChecked", "CheckBoxCheckBackgroundStrokeCheckedPointerOver");
+        Set("Text", "ButtonForeground", "ButtonForegroundPointerOver", "ButtonForegroundPressed", "ComboBoxForeground",
+            "ComboBoxForegroundPointerOver", "ComboBoxForegroundPressed", "TextControlForeground", "TextControlForegroundPointerOver",
+            "TextControlForegroundFocused");
+        Set("TextFaint", "ButtonForegroundDisabled", "ComboBoxForegroundDisabled", "TextControlForegroundDisabled");
+        Set("TextDim", "ComboBoxDropDownGlyphForeground", "ToggleSwitchStrokeOff", "ToggleSwitchKnobFillOff");
+    }
+
+    static TextBlock PageTitle(string text)
+    {
+        var t = Ui.Text(text, 22, Theme.Brush("Text"), semibold: true);
+        t.Margin = new Thickness(0, 0, 0, 6);
         return t;
     }
 
-    /// <summary>A setting: title and description on the left, its control on the right.</summary>
+    static TextBlock GroupHeader(string text)
+    {
+        var t = Ui.Text(text, 13, Theme.Brush("TextDim"), semibold: true);
+        t.Margin = new Thickness(0, 26, 0, 2);
+        return t;
+    }
+
+    /// <summary>A setting (Zed's row): title and description on the left, its control on the right, a line underneath.</summary>
     static Grid Card(string title, string? description, UIElement? control, TextBlock? note = null)
     {
-        var g = new Grid { Padding = new Thickness(18, 12, 16, 12), ColumnSpacing = 20, Background = Theme.Brush("TabBar"), CornerRadius = new CornerRadius(8), MinHeight = 62 };
-        // High contrast draws cards black on black; outline them, as Windows Settings does.
-        if (Theme.HighContrast) { g.BorderBrush = Theme.Brush("Border"); g.BorderThickness = new Thickness(1); }
+        var g = new Grid
+        {
+            Padding = new Thickness(0, 12, 0, 12), ColumnSpacing = 24, MinHeight = 54,
+            BorderBrush = Theme.Brush("Line"), BorderThickness = new Thickness(0, 0, 0, 1),
+            Tag = title + "\n" + description,   // what the settings search matches
+        };
         g.ColumnDefinitions.Add(new ColumnDefinition());
         g.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
-        var text = new StackPanel { Spacing = 2, VerticalAlignment = VerticalAlignment.Center };
+        var text = new StackPanel { Spacing = 3, VerticalAlignment = VerticalAlignment.Center };
         text.Children.Add(Ui.Text(title, 14, Theme.Brush("Text")));
         if (description is not null)
         {
@@ -180,18 +293,72 @@ public sealed partial class MainWindow
         note.Visibility = text.Length > 0 ? Visibility.Visible : Visibility.Collapsed;
     }
 
-    static ComboBox Choice(string[] labels, int selected, Action<int> changed)
+    /// <summary>A flat button (colors come from <see cref="StyleSettingsControls"/>).</summary>
+    static Button SettingsButton(object content, Action? click)
     {
-        var c = new ComboBox { MinWidth = 240 };
-        foreach (var l in labels) c.Items.Add(l);
-        c.SelectedIndex = selected;
-        c.SelectionChanged += (_, _) => { if (c.SelectedIndex >= 0) changed(c.SelectedIndex); };
-        return c;
+        var b = new Button { Content = content, Padding = new Thickness(10, 4, 10, 5), MinHeight = 28, FontSize = 13, CornerRadius = new CornerRadius(5) };
+        if (click is not null) b.Click += (_, _) => click();
+        return b;
+    }
+
+    static StackPanel IconLabel(string glyph, string text)
+    {
+        var row = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 8 };
+        var icon = Ui.Glyph(glyph, 12, Theme.Brush("TextDim"));
+        icon.VerticalAlignment = VerticalAlignment.Center;
+        row.Children.Add(icon);
+        row.Children.Add(Ui.Text(text, 13, Theme.Brush("Text")));
+        return row;
+    }
+
+    static TextBox Field(string text, string placeholder, double width) => new()
+    {
+        Text = text,
+        PlaceholderText = placeholder,
+        PlaceholderForeground = Theme.Brush("TextFaint"),
+        Width = width,
+        FontSize = 13,
+        MinHeight = 28,
+        Padding = new Thickness(8, 4, 8, 5),
+        CornerRadius = new CornerRadius(5),
+    };
+
+    /// <summary>Zed's dropdown: a button showing the value and a chevron, opening a menu with the current value checked.</summary>
+    static Button Choice(string[] labels, int selected, Action<int> changed)
+    {
+        var text = Ui.Text(selected >= 0 && selected < labels.Length ? labels[selected] : "", 13, Theme.Brush("Text"));
+        var content = new Grid { ColumnSpacing = 12 };
+        content.ColumnDefinitions.Add(new ColumnDefinition());
+        content.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+        content.Children.Add(text);
+        var chevron = Ui.Glyph(Ui.ChevronDown, 9, Theme.Brush("TextDim"));
+        chevron.VerticalAlignment = VerticalAlignment.Center;
+        Grid.SetColumn(chevron, 1);
+        content.Children.Add(chevron);
+        var b = SettingsButton(content, null);
+        b.MinWidth = 190;
+        b.HorizontalContentAlignment = HorizontalAlignment.Stretch;
+        var menu = new MenuFlyout { Placement = FlyoutPlacementMode.BottomEdgeAlignedLeft, ShouldConstrainToRootBounds = true, MenuFlyoutPresenterStyle = Ui.SolidPresenter(typeof(MenuFlyoutPresenter)) };
+        for (int i = 0; i < labels.Length; i++)
+        {
+            int n = i;
+            var item = new ToggleMenuFlyoutItem { Text = labels[i], IsChecked = i == selected };
+            item.Click += (_, _) =>
+            {
+                for (int k = 0; k < menu.Items.Count; k++) ((ToggleMenuFlyoutItem)menu.Items[k]).IsChecked = k == n;
+                text.Text = labels[n];
+                changed(n);
+            };
+            menu.Items.Add(item);
+        }
+        b.Flyout = menu;
+        return b;
     }
 
     static ToggleSwitch Switch(bool on, Action<bool> changed)
     {
-        var t = new ToggleSwitch { IsOn = on, OnContent = "On", OffContent = "Off", MinWidth = 0 };
+        // Without On/Off text the template still reserves its content column; the fixed width keeps the switch at the right edge.
+        var t = new ToggleSwitch { IsOn = on, OnContent = "", OffContent = "", MinWidth = 0, Width = 44 };
         t.Toggled += (_, _) => changed(t.IsOn);
         return t;
     }
@@ -199,31 +366,30 @@ public sealed partial class MainWindow
     /// <summary>− value + buttons (NumberBox crashes NativeAOT builds, deviation D-16).</summary>
     static StackPanel Stepper(Func<string> value, Action<int> step)
     {
-        var text = Ui.Text(value(), 14, Theme.Brush("Text"));
-        text.Width = 70;
+        var text = Ui.Text(value(), 13, Theme.Brush("Text"));
+        text.Width = 64;
         text.TextAlignment = TextAlignment.Center;
         text.VerticalAlignment = VerticalAlignment.Center;
-        var minus = new Button { Content = "−", Width = 40 };
-        var plus = new Button { Content = "+", Width = 40 };
-        minus.Click += (_, _) => { step(-1); text.Text = value(); };
-        plus.Click += (_, _) => { step(1); text.Text = value(); };
+        Button Step(string glyph, int d, string tip)
+        {
+            var b = SettingsButton(Ui.Glyph(glyph, 10, Theme.Brush("Text")), () => { step(d); text.Text = value(); });
+            b.Width = 30;
+            b.Padding = new Thickness(0);
+            Microsoft.UI.Xaml.Automation.AutomationProperties.SetName(b, tip);
+            return b;
+        }
         var row = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 4 };
-        row.Children.Add(minus);
+        row.Children.Add(Step("", -1, "Decrease"));
         row.Children.Add(text);
-        row.Children.Add(plus);
+        row.Children.Add(Step(Ui.Add, 1, "Increase"));
         return row;
     }
 
-    static Button ActionButton(string text, Action click)
-    {
-        var b = new Button { Content = text, MinWidth = 120 };
-        b.Click += (_, _) => click();
-        return b;
-    }
+    static Button ActionButton(string text, Action click) => SettingsButton(text, click);
 
     static StackPanel Buttons(params Button[] buttons)
     {
-        var row = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 8 };
+        var row = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 6 };
         foreach (var b in buttons) row.Children.Add(b);
         return row;
     }
@@ -231,7 +397,7 @@ public sealed partial class MainWindow
     /// <summary>An editable font list: the bundled font first (when given), then the installed fonts.</summary>
     static ComboBox FontPicker(IEnumerable<string> fonts, string current, string? bundled, Action<string> changed)
     {
-        var c = new ComboBox { IsEditable = true, Width = 280, MaxDropDownHeight = 360, IsTextSearchEnabled = true };
+        var c = new ComboBox { IsEditable = true, Width = 260, MaxDropDownHeight = 360, IsTextSearchEnabled = true, FontSize = 13, CornerRadius = new CornerRadius(5) };
         var list = new List<string>();
         if (bundled is not null) list.Add(bundled);
         list.AddRange(fonts.Where(f => !list.Contains(f, StringComparer.OrdinalIgnoreCase)));
@@ -255,7 +421,7 @@ public sealed partial class MainWindow
             Choice(["PowerShell", "Command Prompt"], s.Shell == "cmd" ? 1 : 0, i => ChangeSettings(x => x with { Shell = i == 1 ? "cmd" : "pwsh" }))));
 
         var startNote = Note();
-        var startDir = new TextBox { Text = s.StartDirectory, PlaceholderText = "~ (your user folder)", Width = 260 };
+        var startDir = Field(s.StartDirectory, "~ (your user folder)", 240);
         void ApplyStart()
         {
             var dir = startDir.Text.Trim().Trim('"');
@@ -265,7 +431,7 @@ public sealed partial class MainWindow
         }
         startDir.LostFocus += (_, _) => ApplyStart();
         startDir.KeyDown += (_, e) => { if (e.Key == VirtualKey.Enter) { e.Handled = true; ApplyStart(); } };
-        var browse = new Button { Content = "Browse…" };
+        var browse = SettingsButton("Browse…", null);
         browse.Click += async (_, _) =>
         {
             var picker = new Windows.Storage.Pickers.FolderPicker { SuggestedStartLocation = Windows.Storage.Pickers.PickerLocationId.ComputerFolder };
@@ -274,7 +440,7 @@ public sealed partial class MainWindow
             try { if (await picker.PickSingleFolderAsync() is { } folder) { startDir.Text = folder.Path; ApplyStart(); } }
             catch (Exception e) { App.Log("FolderPicker", e); }
         };
-        var startRow = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 8 };
+        var startRow = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 6 };
         startRow.Children.Add(startDir);
         startRow.Children.Add(browse);
         body.Children.Add(Card("Start directory", "Where armux's first terminal and every new workspace open.", startRow, startNote));
@@ -293,8 +459,9 @@ public sealed partial class MainWindow
             Switch(s.CopyOnSelect, on => ChangeSettings(x => x with { CopyOnSelect = on }))));
 
         body.Children.Add(GroupHeader("Settings file"));
-        body.Children.Add(Card("Edit settings.json", SettingsPath, Buttons(
-            ActionButton("Open", () => OpenFile(SettingsPath)),
+        body.Children.Add(Card("settings.json", "Every setting on this page, as JSON. Saving the file applies it at once, also from another editor.", Buttons(
+            ActionButton("Edit in armux", OpenSettingsJson),
+            ActionButton("Open in default app", () => OpenFile(SettingsPath)),
             ActionButton("Show in folder", () => Reveal(SettingsPath)))));
         body.Children.Add(Card("Reset all settings", "Fonts, theme, shortcuts and everything else go back to their defaults.",
             ActionButton("Reset…", () => _ = ResetAllAsync())));
@@ -310,9 +477,7 @@ public sealed partial class MainWindow
 
         body.Children.Add(GroupHeader("Size"));
         var zoom = Stepper(() => $"{Theme.Settings.Zoom * 100:0}%", d => ChangeZoom(d));
-        var reset = new Button { Content = "Reset" };
-        reset.Click += (_, _) => { ChangeZoom(0); ((TextBlock)zoom.Children[1]).Text = "100%"; };
-        zoom.Children.Add(reset);
+        zoom.Children.Add(ActionButton("Reset", () => { ChangeZoom(0); ((TextBlock)zoom.Children[1]).Text = "100%"; }));
         body.Children.Add(Card("Zoom", "Scales the whole window. Shortcuts: Ctrl+= / Ctrl+- / Ctrl+0, or Ctrl+mouse wheel.", zoom));
 
         body.Children.Add(GroupHeader("Interface"));
@@ -327,7 +492,7 @@ public sealed partial class MainWindow
     {
         var s = Theme.Settings;
         var preview = new TextBlock { Text = Sample, TextWrapping = TextWrapping.Wrap, Foreground = TerminalColors.DefaultForeground };
-        var previewBox = new Border { Child = preview, Background = Theme.Brush("Pane"), BorderBrush = Theme.Brush("Border"), BorderThickness = new Thickness(1), CornerRadius = new CornerRadius(8), Padding = new Thickness(16, 12, 16, 12) };
+        var previewBox = new Border { Child = preview, Background = Theme.Brush("Pane"), BorderBrush = Theme.Brush("Line"), BorderThickness = new Thickness(1), CornerRadius = new CornerRadius(6), Padding = new Thickness(16, 12, 16, 12), Margin = new Thickness(0, 12, 0, 0) };
         void UpdatePreview()
         {
             preview.FontFamily = Theme.TerminalFont;
@@ -346,7 +511,7 @@ public sealed partial class MainWindow
             fontNote.Text = f.Equals(Settings.DefaultTerminalFont, StringComparison.OrdinalIgnoreCase) || FontList.IsInstalled(f) ? "" : $"\"{f}\" is not installed; terminals use Cascadia Mono.";
             UpdatePreview();
         }
-        var showAll = new CheckBox { Content = "All fonts" };
+        var showAll = new CheckBox { Content = "All fonts", FontSize = 13 };
         var fontHost = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 8 };
         fontHost.Children.Add(FontPicker(FontList.Monospace, s.TerminalFont, Settings.DefaultTerminalFont, Font));
         fontHost.Children.Add(showAll);
@@ -379,15 +544,14 @@ public sealed partial class MainWindow
         var intro = Ui.Text("Click a shortcut, then press the new keys. Esc cancels, Backspace removes the shortcut.", 13, Theme.Brush("TextDim"));
         intro.TextWrapping = TextWrapping.Wrap;
         body.Children.Add(intro);
-        var search = new TextBox { PlaceholderText = "Search commands or keys", Text = keyFilter, Width = 360, HorizontalAlignment = HorizontalAlignment.Left, Margin = new Thickness(0, 8, 0, 0) };
+        var search = Field(keyFilter, "Search commands or keys", 340);
         var resetAll = ActionButton("Reset all shortcuts", () => { ChangeSettings(x => x with { Keybindings = [] }); ShowSettingsPage("Keyboard"); });
-        var top = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 12 };
-        top.Children.Add(search);
-        resetAll.Margin = new Thickness(0, 8, 0, 0);
         resetAll.IsEnabled = Theme.Settings.Keybindings.Count > 0;
+        var top = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 8, Margin = new Thickness(0, 12, 0, 0) };
+        top.Children.Add(search);
         top.Children.Add(resetAll);
         body.Children.Add(top);
-        var rows = new StackPanel { Spacing = 6 };
+        var rows = new StackPanel();
         body.Children.Add(rows);
 
         void Fill()
@@ -408,7 +572,7 @@ public sealed partial class MainWindow
             {
                 rows.Children.Add(GroupHeader("Fixed shortcuts"));
                 foreach (var (chord, description, _) in fixedMatches)
-                    rows.Children.Add(Card(description, null, Ui.Text(Chord.Display(chord), 13.5, Theme.Brush("TextDim"))));
+                    rows.Children.Add(Card(description, null, Ui.Text(Chord.Display(chord), 13, Theme.Brush("TextDim"))));
             }
         }
         search.TextChanged += (_, _) => { keyFilter = search.Text; Fill(); };
@@ -419,7 +583,9 @@ public sealed partial class MainWindow
     {
         string chord = keys.Effective(id);
         var note = Note(keys.Conflicts(id, chord).ToList() is { Count: > 0 } c ? "Also used by " + string.Join(", ", c) : "");
-        var button = new Button { Content = chord.Length > 0 ? Chord.Display(chord) : "None", MinWidth = 180, HorizontalContentAlignment = HorizontalAlignment.Center };
+        var button = SettingsButton(chord.Length > 0 ? Chord.Display(chord) : "None", null);
+        button.MinWidth = 170;
+        button.HorizontalContentAlignment = HorizontalAlignment.Center;
         if (chord.Length == 0) button.Foreground = Theme.Brush("TextFaint");
         button.Click += (_, _) =>
         {
@@ -433,7 +599,7 @@ public sealed partial class MainWindow
         {
             ChangeSettings(x => x with { Keybindings = keys.With(id, null) });
             ShowSettingsPage("Keyboard");
-        }, 32);
+        }, 28);
         reset.Visibility = keys.IsCustom(id) ? Visibility.Visible : Visibility.Collapsed;
         controls.Children.Add(reset);
         return Card(id, keys.IsCustom(id) ? "Default: " + (keys.Default(id) is { Length: > 0 } dd ? Chord.Display(dd) : "none") : null, controls, note);
@@ -487,7 +653,7 @@ public sealed partial class MainWindow
         body.Children.Add(GroupHeader("Address bar"));
         body.Children.Add(Card("Search engine", "Used when what you type in the address bar is not an address.",
             Choice(["Bing", "Google", "DuckDuckGo"], Array.IndexOf(Settings.SearchEngines, s.SearchEngine), i => ChangeSettings(x => x with { SearchEngine = Settings.SearchEngines[i] }))));
-        var home = new TextBox { Text = s.BrowserHome, PlaceholderText = "Blank: focus the address bar", Width = 300 };
+        var home = Field(s.BrowserHome, "Blank: focus the address bar", 280);
         home.LostFocus += (_, _) => ChangeSettings(x => x with { BrowserHome = home.Text });
         home.KeyDown += (_, e) => { if (e.Key == VirtualKey.Enter) ChangeSettings(x => x with { BrowserHome = home.Text }); };
         body.Children.Add(Card("New tab page", "The page a new browser tab opens.", home));
@@ -533,7 +699,7 @@ public sealed partial class MainWindow
         body.Children.Add(GroupHeader("This build"));
         foreach (var (name, value) in rows)
         {
-            var v = Ui.Text(value, 13.5, Theme.Brush("TextDim"));
+            var v = Ui.Text(value, 13, Theme.Brush("TextDim"));
             v.IsTextSelectionEnabled = true;
             v.TextWrapping = TextWrapping.Wrap;
             v.MaxWidth = 460;

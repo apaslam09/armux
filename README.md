@@ -27,14 +27,14 @@ A terminal workspace app for **Windows 11 on ARM64**, modeled on [cmux](https://
 | Workspace colors (17 presets or custom) shown as a left rail or underline; pinned workspaces | Done |
 | Per-pane tab bars, split right / down, drag to resize, zoom, equalize | Done |
 | Built-in browser (WebView2): address bar with search, back, forward, reload; lazy, suspended when hidden, at most 2 live, released when closed | Done |
-| File explorer beside the sidebar (`Ctrl+Shift+E`), modeled on Warp's file tree | Done (hidden by default) |
+| File explorer beside the sidebar (`Ctrl+Shift+E`), modeled on Warp's file tree; browses any folder or drive, and dragging an entry onto a terminal types its relative path | Done (hidden by default) |
 | Command palette (`Ctrl+Shift+P`) with inline shortcuts and workspace switching | Done |
 | Keyboard switching: `Ctrl+1`–`9` and `Ctrl+PageUp`/`PageDown` for workspaces, `F6` and `Ctrl+Alt+arrows` for panes | Done |
 | Zed's fonts bundled: Lilex in terminals, IBM Plex Sans in the interface; shell, start directory, fonts and size in Settings (`Ctrl+Shift+,`); `Ctrl+=` / `Ctrl+-` / `Ctrl+0` and Ctrl+wheel zoom the whole window, `Ctrl+Shift+=` / `-` / `0` the terminal text | Done |
 | Taskbar status of the current workspace while you're tabbed out: accent bar while Claude Code (or any OSC 9;4 program) works, yellow when it needs you, red on error | Done |
-| Prompt editor (`Ctrl+G`): a normal text box under the terminal for writing long prompts, sent in one paste | Done |
+| Prompt editor (`Ctrl+G`): a normal text box under the terminal for writing long prompts, sent in one paste (Enter sends, Shift+Enter new line, Ctrl+Enter pastes without Enter) | Done |
 | Mouse: copy on select, Shift+drag selection in mouse-aware programs, wheel and clicks passed to programs like Claude Code and vim, drag files from the explorer or Windows Explorer to type their relative path | Done |
-| Settings page (`Ctrl+Shift+,` or the gear): theme (Match Windows, Dark, Light, High contrast), fonts, zoom, cursor, scrollback, start and new-tab directories, a warning before closing while programs run, notifications, browser, every shortcut rebindable, and About with version details | Done |
+| Settings page (`Ctrl+Shift+,` or the gear), laid out like Zed's with search and "Edit in settings.json" (live reload): theme (Match Windows, Dark, Light, High contrast), fonts, zoom, cursor, scrollback, start and new-tab directories, a warning before closing while programs run, notifications, browser, every shortcut rebindable, and About with version details | Done |
 | WSL | Not planned for now: a WSL VM costs far more memory than armux |
 
 More screenshots: [browser and CLI](docs/screenshots/14-browser-and-cli.png), [command palette](docs/screenshots/02-command-palette.png), [notifications](docs/screenshots/03-notifications.png), [workspace colors](docs/screenshots/05-workspace-colors.png), [zoomed pane](docs/screenshots/06-zoomed-pane.png), [light theme](docs/screenshots/07-light-theme.png), [four-pane grid](docs/screenshots/08-four-pane-grid.png), [file explorer](docs/screenshots/11-file-explorer.png), [settings](docs/screenshots/12-settings.png).

@@ -72,6 +72,19 @@ public sealed class FileTree(string root)
     }
 
     /// <summary>
+    /// The path typed when a file is dropped on a terminal in <paramref name="cwd"/>: relative to it (climbing at most
+    /// <paramref name="maxUp"/> folders with ..\), otherwise absolute, as for a file on another drive.
+    /// </summary>
+    public static string DropPath(string? cwd, string path, int maxUp = 3)
+    {
+        if (cwd is null) return path;
+        var rel = Path.GetRelativePath(cwd, path);
+        if (Path.IsPathRooted(rel)) return path;
+        int up = rel.Split(Path.DirectorySeparatorChar).TakeWhile(s => s == "..").Count();
+        return up > maxUp ? path : rel;
+    }
+
+    /// <summary>
     /// Maps a workspace directory such as "~\src\app" to a folder that exists: "~" becomes the user profile,
     /// and a missing folder falls back to its nearest existing parent. <paramref name="exact"/> is false after a fallback.
     /// </summary>

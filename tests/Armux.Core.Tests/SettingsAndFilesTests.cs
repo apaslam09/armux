@@ -33,6 +33,29 @@ public sealed class SettingsAndFilesTests
     }
 
     [TestMethod]
+    public void TryParseReportsErrorsAndAcceptsHandEditedJson()
+    {
+        Assert.IsFalse(Settings.TryParse("{\n  \"theme\": \"dark\",\n  oops\n}", out _, out var error));
+        StringAssert.StartsWith(error, "Line 3");
+        // Comments, trailing commas and any casing are fine in a file typed by hand.
+        Assert.IsTrue(Settings.TryParse("{\n  // dark please\n  \"Theme\": \"dark\",\n  \"terminalFontSize\": 15,\n}", out var s, out error));
+        Assert.IsNull(error);
+        Assert.AreEqual(new Settings { Theme = "dark", TerminalFontSize = 15 }, s);
+    }
+
+    [TestMethod]
+    public void DropPathIsRelativeUnlessItClimbsFar()
+    {
+        var cwd = @"C:\Users\me\dev\armux";
+        Assert.AreEqual(@"src\app.cs", FileTree.DropPath(cwd, @"C:\Users\me\dev\armux\src\app.cs"));
+        Assert.AreEqual(@"..\notes.md", FileTree.DropPath(cwd, @"C:\Users\me\dev\notes.md"));
+        Assert.AreEqual(@"..\..\Downloads\a.png", FileTree.DropPath(cwd, @"C:\Users\me\Downloads\a.png"));
+        Assert.AreEqual(@"C:\Windows\notepad.exe", FileTree.DropPath(cwd, @"C:\Windows\notepad.exe"));   // four levels up: absolute
+        Assert.AreEqual(@"D:\data\x.csv", FileTree.DropPath(cwd, @"D:\data\x.csv"));                      // another drive
+        Assert.AreEqual(@"D:\data\x.csv", FileTree.DropPath(null, @"D:\data\x.csv"));
+    }
+
+    [TestMethod]
     public void SettingsNormalizeBlankNamesAndSizes()
     {
         var s = new Settings { TerminalFont = "  ", UiFont = "", TerminalFontSize = 99 }.Normalized();

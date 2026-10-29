@@ -29,6 +29,11 @@ public sealed partial class MainWindow : Window, IPaneHost, IExplorerHost
     readonly Grid content = new();
     readonly Grid dragRegion = new();
     readonly TextBlock titleText = new();
+    /// <summary>The title bar's buttons (sidebar, explorer, bell, new workspace, settings); hidden while Settings is open.</summary>
+    StackPanel titleButtons = new();
+    FontIcon titleIcon = new();
+    Grid? bellIcon;
+    StackPanel? titlePanel;
     readonly Border bellBadge = new();
     readonly TextBlock bellCount = new();
     readonly CommandPalette palette = new();
@@ -127,10 +132,12 @@ public sealed partial class MainWindow : Window, IPaneHost, IExplorerHost
             };
         pipe = new PipeServer(DispatcherQueue, HandleRequest);
         pipe.Start();
+        WatchSettingsFile();
         AppWindow.Closing += OnWindowClosing;
         Closed += (_, _) =>
         {
             pipe?.Dispose();
+            settingsWatcher?.Dispose();
             DisposeAllSessions();
             Toasts.Unregister();
         };
@@ -175,7 +182,11 @@ public sealed partial class MainWindow : Window, IPaneHost, IExplorerHost
         explorerButton = Ui.IconButton(Ui.Glyph(Ui.Explorer, 14, dim), "File explorer (Ctrl+Shift+E)", ToggleExplorer);
         left.Children.Add(explorerButton);
 
-        var bell = new Grid();
+        // The badge and title text outlive rebuilds (theme or font change). Their old panels have left the tree, where
+        // Parent reads null, so they are detached from the panels remembered here, not through Parent.
+        bellIcon?.Children.Remove(bellBadge);
+        titlePanel?.Children.Remove(titleText);
+        var bell = bellIcon = new Grid();
         bell.Children.Add(Ui.Glyph(Ui.Bell, 14, dim));
         bellBadge.Child = bellCount;
         bellBadge.Background = Theme.Brush("Accent");
@@ -191,7 +202,6 @@ public sealed partial class MainWindow : Window, IPaneHost, IExplorerHost
         bellCount.Foreground = Theme.Brush("SelectedText");
         bellCount.HorizontalAlignment = HorizontalAlignment.Center;
         bellCount.VerticalAlignment = VerticalAlignment.Center;
-        if (bellBadge.Parent is Panel oldParent) oldParent.Children.Remove(bellBadge);
         bell.Children.Add(bellBadge);
         bellButton = Ui.IconButton(bell, "Notifications (Ctrl+Shift+I)", () => bellFlyout.ShowAt(bellButton));
         bellFlyout = new Flyout { Placement = Microsoft.UI.Xaml.Controls.Primitives.FlyoutPlacementMode.BottomEdgeAlignedLeft, ShouldConstrainToRootBounds = true, FlyoutPresenterStyle = Ui.SolidPresenter(typeof(FlyoutPresenter)) };
@@ -199,18 +209,18 @@ public sealed partial class MainWindow : Window, IPaneHost, IExplorerHost
         left.Children.Add(bellButton);
         left.Children.Add(Ui.IconButton(Ui.Glyph(Ui.Add, 13, dim), "New workspace (Ctrl+Shift+N)", NewWorkspace));
         left.Children.Add(Ui.IconButton(Ui.Glyph(Ui.Gear, 13, dim), "Settings (Ctrl+Shift+,)", ToggleSettingsPage));
+        titleButtons = left;
         titleRow.Children.Add(left);
 
         dragRegion.Children.Clear();
         dragRegion.Background = new SolidColorBrush(Colors.Transparent);
-        var title = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 8, VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(14, 0, 0, 0) };
-        title.Children.Add(Ui.Glyph(Ui.Folder, 13, Theme.Brush("Link")));
+        var title = titlePanel = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 8, VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(14, 0, 0, 0) };
+        titleIcon = Ui.Glyph(Ui.Folder, 13, Theme.Brush("Link"));
+        title.Children.Add(titleIcon);
         titleText.FontSize = 13;
         titleText.FontFamily = new FontFamily(Theme.UiFontSemibold);
         titleText.FontWeight = Microsoft.UI.Text.FontWeights.SemiBold;
         titleText.Foreground = Theme.Brush("Text");
-        // titleText outlives rebuilds (theme or font change); detach it from the previous title row first.
-        if (titleText.Parent is Panel oldTitle) oldTitle.Children.Remove(titleText);
         title.Children.Add(titleText);
         dragRegion.Children.Add(title);
         Grid.SetColumn(dragRegion, 1);
@@ -228,9 +238,14 @@ public sealed partial class MainWindow : Window, IPaneHost, IExplorerHost
     void UpdateTitle()
     {
         var ws = state.Current;
-        titleText.Text = ws is null ? "armux" : ws.Zoomed is null ? ws.Title : $"{ws.Title}  ·  zoomed";
-        Title = ws is null ? "armux" : $"{ws.Title} - armux";
-        titleLeft.Width = new GridLength(sidebarVisible ? SidebarWidth : 180);
+        // Settings covers the workspace, so its buttons (new workspace, sidebar, explorer...) go until it closes.
+        bool settings = settingsPage is not null;
+        titleButtons.Visibility = settings ? Visibility.Collapsed : Visibility.Visible;
+        titleIcon.Glyph = settings ? Ui.Gear : Ui.Folder;
+        titleIcon.Foreground = Theme.Brush(settings ? "TextDim" : "Link");
+        titleText.Text = settings ? "Settings" : ws is null ? "armux" : ws.Zoomed is null ? ws.Title : $"{ws.Title}  ·  zoomed";
+        Title = settings ? "Settings - armux" : ws is null ? "armux" : $"{ws.Title} - armux";
+        titleLeft.Width = new GridLength(settings ? 0 : sidebarVisible ? SidebarWidth : 180);
     }
 
     void UpdateBell()
@@ -348,6 +363,7 @@ public sealed partial class MainWindow : Window, IPaneHost, IExplorerHost
         // A dialog, menu or flyout that is open keeps the keyboard, and so does the Settings page.
         if (palette.IsOpen || settingsPage is not null || root.XamlRoot is null || VisualTreeHelper.GetOpenPopupsForXamlRoot(root.XamlRoot).Count > 0) return;
         if (FocusedTerminal() is { } t) t.Focus(FocusState.Programmatic);
+        else if (Focused?.Selected is { } s && panels.TryGetValue(s, out var p) && p is FileView { Editable: true } editor) editor.FocusEditor();
         else keySink.Focus(FocusState.Programmatic);
     });
 
@@ -427,7 +443,7 @@ public sealed partial class MainWindow : Window, IPaneHost, IExplorerHost
             panels[surface] = p = surface.Kind switch
             {
                 PanelKind.Browser => new BrowserPanel(surface, browsers),
-                PanelKind.File => new FileView(surface),
+                PanelKind.File => new FileView(surface, IsSettingsFile(surface.FilePath) ? SaveSettingsText : null),
                 _ => new TerminalView(SessionFor(surface))
                 {
                     ZoomRequested = step => ChangeZoom(step),
@@ -469,6 +485,7 @@ public sealed partial class MainWindow : Window, IPaneHost, IExplorerHost
             if (paneViews.Remove(pane, out var v)) v.Detach();
         }
         foreach (var n in state.Notifications.Where(n => ReferenceEquals(n.Workspace, ws)).ToList()) state.Notifications.Remove(n);
+        explorerRoots.Remove(ws);
         state.Workspaces.Remove(ws);
         if (ReferenceEquals(state.Current, ws)) SelectWorkspace(state.Workspaces[Math.Min(at, state.Workspaces.Count - 1)]);
         UpdateBell();

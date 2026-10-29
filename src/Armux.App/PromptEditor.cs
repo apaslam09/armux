@@ -15,7 +15,7 @@ public sealed partial class PromptEditor : Grid
 {
     readonly TextBox box;
 
-    /// <summary>Text to send, and whether Enter follows it (Send) or not (Insert).</summary>
+    /// <summary>Text to send, and whether Enter follows it (Send) or not (Paste).</summary>
     public event Action<string, bool>? Submitted;
     public event Action? CloseRequested;
 
@@ -32,13 +32,19 @@ public sealed partial class PromptEditor : Grid
         var head = new Grid { ColumnSpacing = 6 };
         head.ColumnDefinitions.Add(new ColumnDefinition());
         head.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
-        var hint = Ui.Text("Prompt editor   Ctrl+Enter send · Shift+Enter insert without Enter · Esc close", 12, Theme.Brush("TextDim"));
+        var hint = Ui.Text("Prompt editor   Enter send · Shift+Enter new line · Ctrl+Enter paste without Enter · Esc close", 12, Theme.Brush("TextDim"));
         hint.VerticalAlignment = VerticalAlignment.Center;
         head.Children.Add(hint);
         var buttons = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 6 };
-        var insert = new Button { Content = "Insert", Padding = new Thickness(10, 3, 10, 4) };
+        var insert = new Button { Content = "Paste", Padding = new Thickness(10, 3, 10, 4) };
+        ToolTipService.SetToolTip(insert, "Paste into the terminal without Enter (Ctrl+Enter)");
         insert.Click += (_, _) => Submit(enter: false);
         var send = new Button { Content = "Send", Padding = new Thickness(12, 3, 12, 4), Style = (Style)Application.Current.Resources["AccentButtonStyle"] };
+        ToolTipService.SetToolTip(send, "Paste and press Enter (Enter)");
+        // armux's accent, not the Windows accent color.
+        foreach (var key in new[] { "AccentButtonBackground", "AccentButtonBackgroundPointerOver", "AccentButtonBackgroundPressed" })
+            send.Resources[key] = Theme.Brush("Accent");
+        send.Resources["AccentButtonForeground"] = send.Resources["AccentButtonForegroundPointerOver"] = Theme.Brush("SelectedText");
         send.Click += (_, _) => Submit(enter: true);
         buttons.Children.Add(insert);
         buttons.Children.Add(send);
@@ -59,6 +65,7 @@ public sealed partial class PromptEditor : Grid
             PlaceholderText = "Write a prompt…",
         };
         ScrollViewer.SetVerticalScrollBarVisibility(box, ScrollBarVisibility.Auto);
+        Microsoft.UI.Xaml.Automation.AutomationProperties.SetName(box, "Prompt");
         // The default TextBox turns white-ish when focused; keep the editor's own color in every state.
         var bg = Theme.Brush("Pane");
         foreach (var key in new[] { "TextControlBackground", "TextControlBackgroundPointerOver", "TextControlBackgroundFocused", "TextControlBackgroundDisabled" })
@@ -68,9 +75,9 @@ public sealed partial class PromptEditor : Grid
         foreach (var key in new[] { "TextControlBorderBrush", "TextControlBorderBrushPointerOver" })
             box.Resources[key] = Theme.Brush("Border");
         box.Resources["TextControlBorderBrushFocused"] = Theme.Brush("Accent");
-        box.Resources["TextControlPlaceholderForeground"] = Theme.Brush("TextDim");
-        box.Resources["TextControlPlaceholderForegroundFocused"] = Theme.Brush("TextDim");
-        box.Resources["TextControlPlaceholderForegroundPointerOver"] = Theme.Brush("TextDim");
+        // The template's focused state takes the placeholder color from a binding whose fallback ignores the
+        // resources above, so the placeholder went near-black on focus. A set PlaceholderForeground wins in every state.
+        box.PlaceholderForeground = Theme.Brush("TextDim");
         box.Background = bg;
         box.Foreground = Theme.Brush("Text");
         box.BorderBrush = Theme.Brush("Border");
@@ -99,8 +106,9 @@ public sealed partial class PromptEditor : Grid
     void OnKey(object sender, KeyRoutedEventArgs e)
     {
         if (e.Key == VirtualKey.Escape) { e.Handled = true; CloseRequested?.Invoke(); return; }
-        if (e.Key != VirtualKey.Enter) return;
-        if (Down(VirtualKey.Control)) { e.Handled = true; Submit(enter: true); }
-        else if (Down(VirtualKey.Shift)) { e.Handled = true; Submit(enter: false); }
+        // Enter sends, Ctrl+Enter pastes without Enter, Shift+Enter is left to the text box (a new line).
+        if (e.Key != VirtualKey.Enter || Down(VirtualKey.Shift)) return;
+        e.Handled = true;
+        Submit(enter: !Down(VirtualKey.Control));
     }
 }

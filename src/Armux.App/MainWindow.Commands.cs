@@ -139,6 +139,7 @@ public sealed partial class MainWindow
 
         group = "Window";
         Cmd("Settings", "Ctrl+Shift+,", ToggleSettingsPage);
+        Cmd("Open settings.json", "", OpenSettingsJson);
         // Ctrl+= / Ctrl+- / Ctrl+0 zoom the whole window, as in browsers (requested). Terminal text alone: Ctrl+Shift.
         Cmd("Zoom In", "Ctrl+=", () => ChangeZoom(1));
         Cmd("Zoom Out", "Ctrl+-", () => ChangeZoom(-1));
@@ -208,7 +209,7 @@ public sealed partial class MainWindow
         if (settingsPage is not null)
         {
             // While Settings is open only Esc and the Settings shortcut act; the rest belongs to its controls.
-            if (e.Key == VirtualKey.Escape) { e.Handled = true; CloseSettingsPage(); return; }
+            if (e.Key == VirtualKey.Escape) { e.Handled = true; EscapeSettingsPage(); return; }
             if (KeyName(e.Key) is { } k && keys.Effective("Settings") is { Length: > 0 } sc
                 && new Chord(Down(VirtualKey.Control), Down(VirtualKey.Menu), Down(VirtualKey.Shift), k) == Chord.Parse(sc))
             { e.Handled = true; CloseSettingsPage(); }

@@ -127,13 +127,36 @@ public sealed record Settings
         }
     }
 
+    /// <summary>
+    /// Parses settings typed by hand (the settings.json editor, or the file changed by another program). Unlike
+    /// <see cref="Load"/>, invalid JSON is an error, not the defaults, so a half-typed file never resets anything.
+    /// </summary>
+    public static bool TryParse(string json, out Settings settings, out string? error)
+    {
+        try
+        {
+            settings = (JsonSerializer.Deserialize(json, SettingsJson.Default.Settings) ?? new()).Normalized();
+            error = null;
+            return true;
+        }
+        catch (JsonException e)
+        {
+            settings = new();
+            error = e.LineNumber is { } line ? $"Line {line + 1}: {e.Message.Split(" Path:")[0]}" : e.Message;
+            return false;
+        }
+    }
+
+    public string ToJson() => JsonSerializer.Serialize(this, SettingsJson.Default.Settings);
+
     public void Save(string path)
     {
         Directory.CreateDirectory(Path.GetDirectoryName(path)!);
-        File.WriteAllText(path, JsonSerializer.Serialize(this, SettingsJson.Default.Settings));
+        File.WriteAllText(path, ToJson());
     }
 }
 
-[JsonSourceGenerationOptions(WriteIndented = true, PropertyNamingPolicy = JsonKnownNamingPolicy.CamelCase)]
+[JsonSourceGenerationOptions(WriteIndented = true, PropertyNamingPolicy = JsonKnownNamingPolicy.CamelCase,
+    PropertyNameCaseInsensitive = true, ReadCommentHandling = JsonCommentHandling.Skip, AllowTrailingCommas = true)]
 [JsonSerializable(typeof(Settings))]
 internal sealed partial class SettingsJson : JsonSerializerContext;
