@@ -81,6 +81,8 @@ public static class Theme
         ["Input"] = (0xFF1F1F1F, 0xFFF3F3F3),
         // Settings page (Zed style): row separators and the flat buttons, dropdowns and fields.
         ["Line"] = (0xFF323232, 0xFFE5E5E5),
+        // A program waiting for an answer (question or permission prompt): orange, apart from the blue of "unread".
+        ["Waiting"] = (0xFFF97316, 0xFFEA580C),
         ["Control"] = (0xFF2E2E2E, 0xFFFFFFFF),
         ["ControlHover"] = (0xFF393939, 0xFFF0F0F0),
         ["Term.Default"] = (0xFFD4D4D4, 0xFF1F1F1F),
@@ -104,7 +106,7 @@ public static class Theme
         ["Text"] = 0xFFFFFFFF, ["TextDim"] = 0xFFFFFFFF, ["TextFaint"] = 0xFFD0D0D0, ["Accent"] = 0xFF1AEBFF,
         ["SelectedRow"] = 0xFF00405C, ["SelectedText"] = 0xFFFFFFFF, ["SelectedDim"] = 0xFFFFFFFF, ["Link"] = 0xFFFFFF00,
         ["Overlay"] = 0xCC000000, ["Palette"] = 0xFF000000, ["PaletteSelected"] = 0xFF00405C, ["Input"] = 0xFF000000,
-        ["Line"] = 0xFFFFFFFF, ["Control"] = 0xFF000000, ["ControlHover"] = 0xFF1A1A1A,
+        ["Line"] = 0xFFFFFFFF, ["Waiting"] = 0xFFFF9F1A, ["Control"] = 0xFF000000, ["ControlHover"] = 0xFF1A1A1A,
         ["Term.Default"] = 0xFFFFFFFF, ["Term.Dim"] = 0xFFD0D0D0, ["Term.Green"] = 0xFF3FF23F, ["Term.Blue"] = 0xFF5CB8FF,
         ["Term.Yellow"] = 0xFFFFFF00, ["Term.Red"] = 0xFFFF6B6B, ["Term.Magenta"] = 0xFFFF7BFF, ["Term.Cyan"] = 0xFF1AEBFF,
     };

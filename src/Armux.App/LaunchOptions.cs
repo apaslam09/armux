@@ -12,11 +12,13 @@ namespace Armux.App;
 ///   --explorer           open the file explorer      --settings [section]   open Settings (General, Appearance, …)
 ///   --prompt-editor      open the prompt editor under the focused terminal
 ///   --rename             open the rename dialog for the first workspace after 3 s (tests that Enter stays out of the terminal)
+///   --no-restore         start fresh instead of reopening the saved session (also implied by --panes)
 /// </summary>
 public sealed record LaunchOptions(
     string Scenario, int Panes, int CloseAfterMs, string? Theme, int Select,
     bool Palette, bool Notifications, bool Zoom, bool Menu, bool Colors, int Width, int Height,
-    bool Explorer = false, bool Settings = false, bool PromptEditor = false, string? SettingsSection = null, bool Rename = false)
+    bool Explorer = false, bool Settings = false, bool PromptEditor = false, string? SettingsSection = null, bool Rename = false,
+    bool NoRestore = false)
 {
     public static LaunchOptions Parse(string[] args)
     {
@@ -33,8 +35,12 @@ public sealed record LaunchOptions(
             int.Parse(size[0]), int.Parse(size[1]),
             Flag("--explorer"), Flag("--settings"), Flag("--prompt-editor"),
             Value("--settings") is { } section && !section.StartsWith("--") ? section : null,
-            Flag("--rename"));
+            Flag("--rename"),
+            Flag("--no-restore") || Flag("--panes"));
     }
+
+    /// <summary>The real window: the one that saves and reopens the session (not mock scenarios or New Window).</summary>
+    public bool Persistent => Scenario == "live" && !NoRestore;
 
     public AppState BuildState() => Scenario switch
     {
@@ -42,8 +48,16 @@ public sealed record LaunchOptions(
         "panes" => MockData.Panes(Math.Max(1, Panes)),
         "browser" => WithBrowser(MockData.Idle()),
         "demo" => MockData.Demo(),
-        _ => Live(Math.Max(1, Panes)),
+        _ => Restored() ?? Live(Math.Max(1, Panes)),
     };
+
+    /// <summary>The workspaces open when armux last closed (Settings > General > Reopen workspaces), if any.</summary>
+    AppState? Restored()
+    {
+        if (!Persistent || !Armux.App.Theme.Settings.RestoreSession) return null;
+        try { return SessionStore.Load(MainWindow.SessionPath) is { } file ? SessionStore.Restore(file, Armux.App.Theme.Settings.Shell) : null; }
+        catch (Exception e) { App.Log("RestoreSession", e); return null; }
+    }
 
     /// <summary>One workspace in the start directory from Settings with <paramref name="panes"/> live terminals running the default shell.</summary>
     static AppState Live(int panes)

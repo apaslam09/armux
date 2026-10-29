@@ -24,6 +24,16 @@ public sealed class Surface : Observable
     bool unread;
     public bool Unread { get => unread; set => Set(ref unread, value); }
 
+    bool waiting;
+    /// <summary>
+    /// The program in this terminal asked for the user (a question or a permission prompt: the bell, an OSC
+    /// notification, OSC 9;4 paused) and nothing has been typed or pasted since. Shown orange.
+    /// </summary>
+    public bool Waiting { get => waiting; set => Set(ref waiting, value); }
+
+    /// <summary>Folder a live terminal starts in (a restored session); empty means the workspace's folder.</summary>
+    public string StartDirectory { get; init; } = "";
+
     string url = "";
     public string Url { get => url; set => Set(ref url, value); }
 
@@ -64,6 +74,7 @@ public sealed class Pane : PaneNode
     public ObservableCollection<Surface> Surfaces { get; } = [];
     public Surface? Selected { get; set; }
     public bool NeedsAttention => Surfaces.Any(s => s.Unread);
+    public bool Waiting => Surfaces.Any(s => s.Waiting);
 }
 
 public sealed class SplitNode : PaneNode

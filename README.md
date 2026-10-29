@@ -6,7 +6,7 @@ A terminal workspace app for **Windows 11 on ARM64**, modeled on [cmux](https://
 
 [![ci](https://github.com/apaslam09/armux/actions/workflows/ci.yml/badge.svg)](https://github.com/apaslam09/armux/actions/workflows/ci.yml)
 
-> **Status: 0.3.0, the first release.** PowerShell and cmd run through ConPTY in armux's own terminal emulator; OSC 9 / 99 / 777 light up notification rings, Windows toasts and the taskbar button; the browser loads real pages; the `armux` CLI talks to the app; a Settings page covers themes, fonts and every shortcut. See the [roadmap](ARCHITECTURE.md#roadmap).
+> **Status: 0.4.0.** PowerShell and cmd run through ConPTY in armux's own terminal emulator; OSC 9 / 99 / 777 light up notification rings, Windows toasts and the taskbar button, and an agent waiting for an answer turns orange; workspaces reopen on start; the browser loads real pages; the `armux` CLI talks to the app; a Zed-style Settings page (and settings.json) covers themes, fonts and every shortcut. See the [roadmap](ARCHITECTURE.md#roadmap).
 
 ![armux with two PowerShell panes, the file explorer and a notification ring](docs/screenshots/13-live-shells.png)
 
@@ -23,18 +23,20 @@ A terminal workspace app for **Windows 11 on ARM64**, modeled on [cmux](https://
 | PowerShell 7 (or Windows PowerShell) and cmd through ConPTY, with 24-bit color, scrollback, selection, copy and paste | Done |
 | OSC 9 / 99 / 777 notifications: pane ring, tab dot, workspace badge, notification panel, Windows toast when armux is in the background | Done |
 | `armux` CLI: `notify`, `send`, `open`, `list`, `ping` over a per-user named pipe | Done |
-| Vertical sidebar: workspace title, live status with a dot (working, needs input, idle, latest notification), git branch · directory (follows `cd`), ports, PR, unread badge | Done |
+| Vertical sidebar: workspace title, live status with a dot (working, waiting for you, idle, latest notification), git branch · directory (follows `cd`), ports, PR, unread badge | Done |
+| Orange light when an agent waits for an answer or a permission: pane ring, tab dot and sidebar status, until you type in that terminal | Done |
+| Workspaces, splits and tabs reopen on the next start, each terminal in its last folder (can be turned off) | Done |
 | Workspace colors (17 presets or custom) shown as a left rail or underline; pinned workspaces | Done |
 | Per-pane tab bars, split right / down, drag to resize, zoom, equalize | Done |
 | Built-in browser (WebView2): address bar with search, back, forward, reload; lazy, suspended when hidden, at most 2 live, released when closed | Done |
 | File explorer beside the sidebar (`Ctrl+Shift+E`), modeled on Warp's file tree; browses any folder or drive, and dragging an entry onto a terminal types its relative path | Done (hidden by default) |
 | Command palette (`Ctrl+Shift+P`) with inline shortcuts and workspace switching | Done |
-| Keyboard switching: `Ctrl+1`–`9` and `Ctrl+PageUp`/`PageDown` for workspaces, `F6` and `Ctrl+Alt+arrows` for panes | Done |
-| Zed's fonts bundled: Lilex in terminals, IBM Plex Sans in the interface; shell, start directory, fonts and size in Settings (`Ctrl+Shift+,`); `Ctrl+=` / `Ctrl+-` / `Ctrl+0` and Ctrl+wheel zoom the whole window, `Ctrl+Shift+=` / `-` / `0` the terminal text | Done |
+| Keyboard switching: `Ctrl+1`–`9` and `Ctrl+PageUp`/`PageDown` for workspaces, `F6` and `Ctrl+Alt+arrows` for panes; Windows Terminal's defaults too (`Ctrl+,`, `Ctrl+Insert`/`Shift+Insert`, `Ctrl+Shift+arrows` to scroll, `Alt+Shift+=`/`-`/`D` to split, `F11`) | Done |
+| Zed's fonts bundled: Lilex in terminals, IBM Plex Sans in the interface; shell, start directory, fonts and size in Settings (`Ctrl+,`); `Ctrl+=` / `Ctrl+-` / `Ctrl+0` and Ctrl+wheel zoom the whole window, `Ctrl+Shift+=` / `-` / `0` the terminal text | Done |
 | Taskbar status of the current workspace while you're tabbed out: accent bar while Claude Code (or any OSC 9;4 program) works, yellow when it needs you, red on error | Done |
 | Prompt editor (`Ctrl+G`): a normal text box under the terminal for writing long prompts, sent in one paste (Enter sends, Shift+Enter new line, Ctrl+Enter pastes without Enter) | Done |
 | Mouse: copy on select, Shift+drag selection in mouse-aware programs, wheel and clicks passed to programs like Claude Code and vim, drag files from the explorer or Windows Explorer to type their relative path | Done |
-| Settings page (`Ctrl+Shift+,` or the gear), laid out like Zed's with search and "Edit in settings.json" (live reload): theme (Match Windows, Dark, Light, High contrast), fonts, zoom, cursor, scrollback, start and new-tab directories, a warning before closing while programs run, notifications, browser, every shortcut rebindable, and About with version details | Done |
+| Settings page (`Ctrl+,` or the gear; `Ctrl+Shift+,` opens settings.json), laid out like Zed's with search and "Edit in settings.json" (live reload): theme (Match Windows, Dark, Light, High contrast), fonts, zoom, cursor, scrollback, start and new-tab directories, a warning before closing while programs run, notifications, browser, every shortcut rebindable, and About with version details | Done |
 | WSL | Not planned for now: a WSL VM costs far more memory than armux |
 
 More screenshots: [browser and CLI](docs/screenshots/14-browser-and-cli.png), [command palette](docs/screenshots/02-command-palette.png), [notifications](docs/screenshots/03-notifications.png), [workspace colors](docs/screenshots/05-workspace-colors.png), [zoomed pane](docs/screenshots/06-zoomed-pane.png), [light theme](docs/screenshots/07-light-theme.png), [four-pane grid](docs/screenshots/08-four-pane-grid.png), [file explorer](docs/screenshots/11-file-explorer.png), [settings](docs/screenshots/12-settings.png).
@@ -55,7 +57,7 @@ Programs can also notify without the CLI by printing OSC 9 (`ESC ] 9 ; text BEL`
 
 ## Download
 
-Get `armux-<version>-win-arm64.zip` from [Releases](https://github.com/apaslam09/armux/releases), extract it anywhere (for example `%LOCALAPPDATA%\Programs\armux`) and run `armux.exe`. To use the CLI outside armux terminals too, add that folder to your PATH. There is no installer yet; settings live in `%LOCALAPPDATA%\armux\settings.json`.
+Get `armux-<version>-win-arm64.zip` from [Releases](https://github.com/apaslam09/armux/releases), extract it anywhere (for example `%LOCALAPPDATA%\Programs\armux`) and run `armux.exe`. To use the CLI outside armux terminals too, add that folder to your PATH. There is no installer yet; settings live in `%LOCALAPPDATA%\armux\settings.json` and the saved workspaces in `session.json` beside it.
 
 ## Requirements
 

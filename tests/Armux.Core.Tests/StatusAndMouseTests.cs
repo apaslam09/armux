@@ -74,6 +74,9 @@ public sealed class StatusAndMouseTests
         Assert.AreEqual(("2 tabs working", AgentState.Working), AgentStatus.Describe([("◐ a", AgentState.Working), ("◓ b", AgentState.Working)], null, null));
         Assert.AreEqual(("Needs input", AgentState.NeedsInput), AgentStatus.Describe([("◑ a", AgentState.Working)], "Needs input", null));
         Assert.AreEqual(("Agent turn complete", AgentState.Idle), AgentStatus.Describe([("✳ a", AgentState.Idle)], null, "Agent turn complete"));
+        // A program still waiting for an answer outranks work elsewhere, even once its notification was read.
+        Assert.AreEqual(("Waiting for you · Claude Code", AgentState.NeedsInput),
+            AgentStatus.Describe([("◑ b", AgentState.Working), ("✳ Claude Code", AgentState.NeedsInput)], null, "Claude needs your permission"));
     }
 
     [TestMethod]

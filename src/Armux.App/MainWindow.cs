@@ -133,9 +133,13 @@ public sealed partial class MainWindow : Window, IPaneHost, IExplorerHost
         pipe = new PipeServer(DispatcherQueue, HandleRequest);
         pipe.Start();
         WatchSettingsFile();
+        StartSessionSaving();
         AppWindow.Closing += OnWindowClosing;
         Closed += (_, _) =>
         {
+            // Before the shells go: each terminal's folder is saved with the session.
+            sessionTimer?.Stop();
+            SaveSession();
             pipe?.Dispose();
             settingsWatcher?.Dispose();
             DisposeAllSessions();
@@ -208,7 +212,7 @@ public sealed partial class MainWindow : Window, IPaneHost, IExplorerHost
         bellFlyout.Opening += (_, _) => bellFlyout.Content = NotificationsList();
         left.Children.Add(bellButton);
         left.Children.Add(Ui.IconButton(Ui.Glyph(Ui.Add, 13, dim), "New workspace (Ctrl+Shift+N)", NewWorkspace));
-        left.Children.Add(Ui.IconButton(Ui.Glyph(Ui.Gear, 13, dim), "Settings (Ctrl+Shift+,)", ToggleSettingsPage));
+        left.Children.Add(Ui.IconButton(Ui.Glyph(Ui.Gear, 13, dim), "Settings (Ctrl+,)", ToggleSettingsPage));
         titleButtons = left;
         titleRow.Children.Add(left);
 

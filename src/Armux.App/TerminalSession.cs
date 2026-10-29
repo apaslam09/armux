@@ -87,7 +87,7 @@ public sealed class TerminalSession : IDisposable
             Log($"[start {cols}x{rows}]");
             pty = PtySession.Start(ShellIntegration.CommandLine(kind), cwd, ShellIntegration.Environment(kind, environment), cols, rows,
                 data => { if (log is not null) lock (log) { log.Write(data.Span); log.Flush(); } FeedSafely(data.Span); QueueRender(); },
-                code => ui.TryEnqueue(() => { Exited = true; ProcessExited?.Invoke(code); }));
+                code => ui.TryEnqueue(() => { Exited = true; surface.Waiting = false; ProcessExited?.Invoke(code); }));
         }
         catch (Exception e) when (e is System.ComponentModel.Win32Exception or IOException)
         {
@@ -111,10 +111,32 @@ public sealed class TerminalSession : IDisposable
 
     int feedErrors;
 
+    /// <summary>
+    /// The program asked the user something (a question, a permission prompt): set by the bell from a program
+    /// (a bell at a bare shell prompt is ignored) or an OSC notification, cleared by the next key or paste. While set,
+    /// <see cref="State"/> is NeedsInput, shown orange.
+    /// </summary>
+    public bool Waiting => surface.Waiting;
+
+    public void MarkWaiting(bool fromBell)
+    {
+        if (Exited || fromBell && AgentStatus.ProgramName(RawTitle) is null) return;
+        surface.Waiting = true;
+        UpdateState();
+    }
+
+    void Answered()
+    {
+        if (!surface.Waiting) return;
+        surface.Waiting = false;
+        UpdateState();
+    }
+
     void UpdateState()
     {
         var state = AgentStatus.FromProgress(Terminal.ProgressState);
         if (state == AgentState.Idle && AgentStatus.TitleShowsWork(RawTitle)) state = AgentState.Working;
+        if (surface.Waiting) state = AgentState.NeedsInput;
         if (state == State) return;
         State = state;
         StateChanged?.Invoke();
@@ -141,12 +163,20 @@ public sealed class TerminalSession : IDisposable
 
     public void Send(string text) => pty?.Write(text);
 
+    /// <summary>Typed by the user: also answers a waiting program. (Mouse reports and focus events use <see cref="Send"/>.)</summary>
+    public void Input(string text)
+    {
+        Answered();
+        Send(text);
+    }
+
     /// <summary>The shell's process id, or 0 before it starts.</summary>
     public int ShellProcessId => pty?.ProcessId ?? 0;
 
     /// <summary>Pastes text the way Ctrl+Shift+V does: bracketed when the program asked for it.</summary>
     public void Paste(string text)
     {
+        Answered();
         text = text.Replace("\r\n", "\r").Replace('\n', '\r');
         Send(Terminal.BracketedPaste ? "\u001b[200~" + text.Replace("\u001b[201~", "") + "\u001b[201~" : text);
     }

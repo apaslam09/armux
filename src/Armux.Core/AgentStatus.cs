@@ -10,7 +10,8 @@ public enum AgentState { Idle, Working, Error, NeedsInput }
 /// <item>Claude Code's tab title: a spinner glyph while it works (<c>◐◓◑◒</c>, braille dots), <c>✳</c> when idle.
 /// Claude Code emits OSC 9;4 only for ConEmu, Ghostty and iTerm, so the title is the signal in armux.</item>
 /// </list>
-/// "Needs input" comes from notifications (OSC 9 / 99 / 777, the bell), not from here.
+/// "Needs input" also comes from notifications (OSC 9 / 99 / 777, the bell): the terminal session marks itself
+/// waiting until the user types or pastes.
 /// </summary>
 public static class AgentStatus
 {
@@ -50,13 +51,15 @@ public static class AgentStatus
 
     /// <summary>
     /// The sidebar status line of a workspace with live terminals (cmux shows the latest notification there):
-    /// an unread notification first, then what is working, then the latest notification, then the program that is
-    /// open, then "Idle".
+    /// an unread notification first, then a program waiting for an answer, then what is working, then the latest
+    /// notification, then the program that is open, then "Idle".
     /// </summary>
     public static (string Text, AgentState Activity) Describe(
         IReadOnlyList<(string Title, AgentState State)> tabs, string? unreadNotification, string? latestNotification)
     {
         if (unreadNotification is not null) return (unreadNotification, AgentState.NeedsInput);
+        if (tabs.FirstOrDefault(t => t.State == AgentState.NeedsInput) is { Title: { } waitingTitle })
+            return ("Waiting for you · " + (ProgramName(waitingTitle) ?? "terminal"), AgentState.NeedsInput);
         var working = tabs.Where(t => t.State == AgentState.Working).ToList();
         if (working.Count == 1) return ("Working · " + (ProgramName(working[0].Title) ?? "terminal"), AgentState.Working);
         if (working.Count > 1) return ($"{working.Count} tabs working", AgentState.Working);

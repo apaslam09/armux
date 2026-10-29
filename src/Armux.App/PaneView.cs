@@ -113,7 +113,8 @@ public sealed partial class PaneView : Grid
                 body.Children.Add(panel);
             }
         }
-        ring.BorderBrush = Pane.NeedsAttention ? Theme.Brush("Accent") : null;
+        // Orange while a program in the pane waits for an answer; blue for an unread notification.
+        ring.BorderBrush = Pane.Waiting ? Theme.Brush("Waiting") : Pane.NeedsAttention ? Theme.Brush("Accent") : null;
         ring.Opacity = 1;
     }
 
@@ -129,7 +130,8 @@ public sealed partial class PaneView : Grid
         icon.VerticalAlignment = VerticalAlignment.Center;
         var title = Ui.Text(s.Title, 12.5, fg);
         title.VerticalAlignment = VerticalAlignment.Center;
-        var dot = new Ellipse { Width = 7, Height = 7, Fill = Theme.Brush("Accent"), VerticalAlignment = VerticalAlignment.Center, Visibility = s.Unread ? Visibility.Visible : Visibility.Collapsed };
+        var dot = new Ellipse { Width = 7, Height = 7, Fill = Theme.Brush(s.Waiting ? "Waiting" : "Accent"), VerticalAlignment = VerticalAlignment.Center, Visibility = s.Unread || s.Waiting ? Visibility.Visible : Visibility.Collapsed };
+        if (s.Waiting) ToolTipService.SetToolTip(dot, "Waiting for your answer");
         var close = Ui.IconButton(Ui.Glyph(Ui.Close, 9, Theme.Brush("TextFaint")), "Close (Ctrl+Shift+W)", () => host.CloseSurface(Pane, s), 20);
         close.VerticalAlignment = VerticalAlignment.Center;
         SetColumn(title, 1); SetColumn(dot, 2); SetColumn(close, 3);

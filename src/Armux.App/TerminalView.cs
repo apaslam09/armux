@@ -477,13 +477,30 @@ public sealed partial class TerminalView : UserControl
         session.Paste(text);
     }
 
+    /// <summary>
+    /// Ctrl+Shift+Up / Down / PageUp / PageDown / Home / End (Windows Terminal's defaults): moves the view through
+    /// the scrollback by <paramref name="lines"/> (negative is up); int.MinValue / MaxValue go to the top / bottom.
+    /// </summary>
+    public void ScrollBy(int lines)
+    {
+        int sb = ScrollbackCount();
+        if (lines == int.MinValue) viewTop = 0;
+        else if (lines == int.MaxValue) viewTop = sb;
+        else viewTop = Math.Clamp(viewTop + lines, 0, sb);
+        follow = viewTop >= sb;
+        Render(force: false);
+    }
+
+    /// <summary>Rows on screen, for page scrolling.</summary>
+    public int PageRows { get { lock (session.Terminal.Sync) return Math.Max(1, session.Terminal.Rows - 1); } }
+
     // ---- input -------------------------------------------------------------------------------
 
     void SendInput(string text)
     {
         if (!follow) { follow = true; Render(force: false); }
         if (selA is not null && !selecting) { selA = selB = null; lock (session.Terminal.Sync) DrawSelection(session.Terminal); }
-        session.Send(text);
+        session.Input(text);
     }
 
     void OnWheel(object sender, PointerRoutedEventArgs e)

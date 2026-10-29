@@ -39,6 +39,8 @@ public sealed record Settings
     public string ConfirmClose { get; set; } = "running";
     /// <summary>Selecting text with the mouse copies it (Warp, Windows Terminal's copyOnSelect).</summary>
     public bool CopyOnSelect { get; set; } = true;
+    /// <summary>Save the workspaces, splits and tabs when armux closes and reopen them on the next start.</summary>
+    public bool RestoreSession { get; set; } = true;
 
     // ---- Appearance
     /// <summary>"system", "dark", "light" or "high-contrast".</summary>

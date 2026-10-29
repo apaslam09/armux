@@ -40,7 +40,9 @@ public sealed partial class MainWindow
         var ws = Locate(surface)?.Ws;
         var home = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
         // New tabs follow the workspace's directory, or start in the start directory (Settings > General).
-        string cwd = FileTree.Resolve(Theme.Settings.NewTabDirectory == "start" ? StartDirectory() : ws?.Cwd ?? "~", home, out _);
+        // A restored terminal starts where it was when armux closed.
+        string cwd = surface.StartDirectory.Length > 0 && Directory.Exists(surface.StartDirectory) ? surface.StartDirectory
+            : FileTree.Resolve(Theme.Settings.NewTabDirectory == "start" ? StartDirectory() : ws?.Cwd ?? "~", home, out _);
         var env = new Dictionary<string, string>
         {
             ["ARMUX_SURFACE_ID"] = surface.Id.ToString(),
@@ -53,13 +55,19 @@ public sealed partial class MainWindow
         // Programs that ask for the colors (OSC 10 / 11; Claude Code does) pick a matching light or dark theme.
         s.Terminal.ReportedBackground = Theme.Dark ? 0x262626u : 0xFFFFFFu;
         s.Terminal.ReportedForeground = Theme.Dark ? 0xD4D4D4u : 0x1F1F1Fu;
-        s.Notified += n => OnTerminalNotification(surface, n);
+        // A program's notification or bell also means it is waiting for an answer: orange until the user types.
+        s.Notified += n => { s.MarkWaiting(fromBell: false); OnTerminalNotification(surface, n); };
         s.CwdChanged += path => OnTerminalCwd(surface, path);
         s.ProcessExited += _ => OnProcessExited(surface);
         s.StateChanged += () => { UpdateTaskbar(); UpdateStatus(surface); };
         s.TitleUpdated += () => UpdateStatus(surface);
         // The bell is how Claude Code (and many programs) ask for attention when no OSC notification is configured.
-        s.Bell += () => { if (Theme.Settings.BellNotifies) OnTerminalNotification(surface, new TermNotification("", "Needs your attention")); };
+        s.Bell += () =>
+        {
+            if (!Theme.Settings.BellNotifies) return;
+            s.MarkWaiting(fromBell: true);
+            OnTerminalNotification(surface, new TermNotification("", "Needs your attention"));
+        };
         sessions[surface] = s;
         return s;
     }

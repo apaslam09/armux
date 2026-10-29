@@ -136,10 +136,31 @@ public sealed partial class MainWindow
         Cmd("Decrease Terminal Font Size", "Ctrl+Shift+-", () => ChangeFontSize(-1));
         Cmd("Reset Terminal Font Size", "Ctrl+Shift+0", () => ChangeFontSize(0));
         Cmd("Prompt Editor", "Ctrl+G", TogglePromptEditor);
+        // Windows Terminal's scrollback keys.
+        Cmd("Scroll Up a Line", "Ctrl+Shift+Up", () => FocusedTerminal()?.ScrollBy(-1));
+        Cmd("Scroll Down a Line", "Ctrl+Shift+Down", () => FocusedTerminal()?.ScrollBy(1));
+        Cmd("Scroll Up a Page", "Ctrl+Shift+PageUp", () => { if (FocusedTerminal() is { } t) t.ScrollBy(-t.PageRows); });
+        Cmd("Scroll Down a Page", "Ctrl+Shift+PageDown", () => { if (FocusedTerminal() is { } t) t.ScrollBy(t.PageRows); });
+        Cmd("Scroll to Top", "Ctrl+Shift+Home", () => FocusedTerminal()?.ScrollBy(int.MinValue));
+        Cmd("Scroll to Bottom", "Ctrl+Shift+End", () => FocusedTerminal()?.ScrollBy(int.MaxValue));
+        // Windows Terminal's classic clipboard keys (Shift+Insert also pastes inside the terminal itself).
+        Key("Ctrl+Insert", () => FocusedTerminal()?.Copy(), "Copy");
+        Key("Shift+Insert", () => { if (FocusedTerminal() is { } t) _ = t.PasteAsync(); }, "Paste");
+        // Windows Terminal's split keys: Alt+Shift+Plus right, Alt+Shift+Minus down, Alt+Shift+D along the longer side.
+        Key("Alt+Shift+=", () => { if (Focused is { } p) SplitPane(p, SplitDirection.Right); }, "Split right (Windows Terminal)");
+        Key("Alt+Shift+-", () => { if (Focused is { } p) SplitPane(p, SplitDirection.Down); }, "Split down (Windows Terminal)");
+        Key("Alt+Shift+D", () =>
+        {
+            if (Focused is not { } p) return;
+            var v = ViewOf(p);
+            SplitPane(p, v.ActualWidth >= v.ActualHeight ? SplitDirection.Right : SplitDirection.Down);
+        }, "Split along the longer side (Windows Terminal)");
 
         group = "Window";
-        Cmd("Settings", "Ctrl+Shift+,", ToggleSettingsPage);
-        Cmd("Open settings.json", "", OpenSettingsJson);
+        // Ctrl+, opens settings and Ctrl+Shift+, the settings file, as in Windows Terminal and VS Code.
+        Cmd("Settings", "Ctrl+,", ToggleSettingsPage);
+        Cmd("Open settings.json", "Ctrl+Shift+,", OpenSettingsJson);
+        Cmd("Toggle Full Screen", "F11", ToggleFullScreen);
         // Ctrl+= / Ctrl+- / Ctrl+0 zoom the whole window, as in browsers (requested). Terminal text alone: Ctrl+Shift.
         Cmd("Zoom In", "Ctrl+=", () => ChangeZoom(1));
         Cmd("Zoom Out", "Ctrl+-", () => ChangeZoom(-1));
@@ -208,11 +229,13 @@ public sealed partial class MainWindow
         if (palette.IsOpen || recordingShortcut is not null) return;
         if (settingsPage is not null)
         {
-            // While Settings is open only Esc and the Settings shortcut act; the rest belongs to its controls.
+            // While Settings is open only Esc and the window-level shortcuts act; the rest belongs to its controls.
             if (e.Key == VirtualKey.Escape) { e.Handled = true; EscapeSettingsPage(); return; }
-            if (KeyName(e.Key) is { } k && keys.Effective("Settings") is { Length: > 0 } sc
-                && new Chord(Down(VirtualKey.Control), Down(VirtualKey.Menu), Down(VirtualKey.Shift), k) == Chord.Parse(sc))
-            { e.Handled = true; CloseSettingsPage(); }
+            if (KeyName(e.Key) is not { } k) return;
+            var pressed = new Chord(Down(VirtualKey.Control), Down(VirtualKey.Menu), Down(VirtualKey.Shift), k);
+            foreach (var id in (string[])["Settings", "Open settings.json", "Toggle Full Screen"])
+                if (keys.Effective(id) is { Length: > 0 } sc && pressed == Chord.Parse(sc) && entries.FirstOrDefault(x => x.Id == id) is { } cmd)
+                { e.Handled = true; cmd.Run(); return; }
             return;
         }
         if (KeyName(e.Key) is not { } key) return;
@@ -282,6 +305,13 @@ public sealed partial class MainWindow
         if (Ws is not { } w || Focused is not { } p) return;
         w.Zoomed = w.Zoomed is null && w.Panes.Count() > 1 ? p : null;
         RenderContent();
+    }
+
+    /// <summary>F11, as in Windows Terminal, browsers and VS Code: the window fills the screen without its title bar.</summary>
+    void ToggleFullScreen()
+    {
+        bool full = AppWindow.Presenter.Kind == Microsoft.UI.Windowing.AppWindowPresenterKind.FullScreen;
+        AppWindow.SetPresenter(full ? Microsoft.UI.Windowing.AppWindowPresenterKind.Overlapped : Microsoft.UI.Windowing.AppWindowPresenterKind.FullScreen);
     }
 
     void SetTheme(ThemeKind kind)

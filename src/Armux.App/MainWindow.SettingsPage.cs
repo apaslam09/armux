@@ -14,7 +14,7 @@ using Windows.System;
 namespace Armux.App;
 
 /// <summary>
-/// The Settings page (cmux ⌘,; Ctrl+Shift+, here), laid out like Zed's settings editor (deviation D-31): a search box
+/// The Settings page (cmux ⌘,; Ctrl+, here), laid out like Zed's settings editor (deviation D-31): a search box
 /// and the sections on the left, flat rows of settings on the right, and "Edit in settings.json" for the file itself.
 /// It covers the whole window and hides the title bar's workspace buttons until it closes. Every control applies and
 /// saves at once. The page is built when opened and dropped when closed.
@@ -453,6 +453,10 @@ public sealed partial class MainWindow
         body.Children.Add(Card("Ask before closing armux", "Closing the window ends every shell and the programs running in them.",
             Choice(["When a program is running", "Always", "Never"], Array.IndexOf(Settings.ConfirmCloseModes, s.ConfirmClose),
                 i => ChangeSettings(x => x with { ConfirmClose = Settings.ConfirmCloseModes[i] }))));
+
+        body.Children.Add(GroupHeader("Startup"));
+        body.Children.Add(Card("Reopen workspaces", "When armux starts, the workspaces, splits and tabs from last time come back, and each terminal opens in the folder it was in. Programs that were running (Claude Code, servers) are not restarted; run claude --continue to resume a conversation.",
+            Switch(s.RestoreSession, on => ChangeSettings(x => x with { RestoreSession = on }))));
 
         body.Children.Add(GroupHeader("Mouse"));
         body.Children.Add(Card("Copy on select", "Selecting text with the mouse copies it. Programs that use the mouse (Claude Code, vim) need Shift+drag to select.",

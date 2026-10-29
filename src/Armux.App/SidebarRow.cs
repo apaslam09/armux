@@ -90,10 +90,12 @@ public sealed partial class SidebarRow : Grid
         dot.Fill = ws.Activity switch
         {
             AgentState.Working => Theme.Hex("#22C55E"),
-            AgentState.NeedsInput => Theme.Hex("#F59E0B"),
+            AgentState.NeedsInput => Theme.Brush("Waiting"),
             AgentState.Error => Theme.Hex("#EF4444"),
             _ => Theme.Brush("TextFaint"),
         };
+        // Waiting for an answer is the state to notice from across the room: the status line turns orange too.
+        status.Foreground = Theme.Brush(ws.Activity == AgentState.NeedsInput ? "Waiting" : "TextDim");
         location.Text = string.IsNullOrEmpty(ws.Ports) ? ws.Location : $"{ws.Location}  {ws.Ports}";
         pr.Text = ws.Pr;
         pr.Visibility = ws.HasPr ? Visibility.Visible : Visibility.Collapsed;
