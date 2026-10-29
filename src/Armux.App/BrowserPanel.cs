@@ -44,10 +44,26 @@ public sealed partial class BrowserPanel : Grid
             FontSize = 12.5,
             Margin = new Thickness(6, 0, 0, 0),
             VerticalAlignment = VerticalAlignment.Center,
-            BorderThickness = new Thickness(0),
+            // Compact like the explorer's path box: the default 32 px box dwarfed the text.
+            MinHeight = 26,
+            Padding = new Thickness(10, 3, 10, 4),
+            CornerRadius = new CornerRadius(6),
+            BorderThickness = new Thickness(1),
+            IsSpellCheckEnabled = false,
             Background = Theme.Brush("Input"),
             Foreground = Theme.Brush("Text"),
+            BorderBrush = Theme.Brush("Border"),
+            // A set PlaceholderForeground keeps its gray when focused (the template's focus binding ignores resources).
+            PlaceholderForeground = Theme.Brush("TextFaint"),
         };
+        // The default text box turns white with dark text when focused; keep the bar's colors in every state.
+        foreach (var key in new[] { "TextControlBackground", "TextControlBackgroundPointerOver", "TextControlBackgroundFocused" })
+            url.Resources[key] = Theme.Brush("Input");
+        foreach (var key in new[] { "TextControlForeground", "TextControlForegroundPointerOver", "TextControlForegroundFocused" })
+            url.Resources[key] = Theme.Brush("Text");
+        foreach (var key in new[] { "TextControlBorderBrush", "TextControlBorderBrushPointerOver" })
+            url.Resources[key] = Theme.Brush("Border");
+        url.Resources["TextControlBorderBrushFocused"] = Theme.Brush("Accent");
         url.KeyDown += (_, e) =>
         {
             if (e.Key != Windows.System.VirtualKey.Enter) return;
