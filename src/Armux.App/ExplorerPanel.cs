@@ -90,7 +90,8 @@ public sealed partial class ExplorerPanel : Grid
         bar.Children.Add(upButton);
         location = new TextBox
         {
-            FontSize = 11.5, MinHeight = 24, Padding = new Thickness(6, 2, 6, 3), Margin = new Thickness(2, 0, 2, 0),
+            FontSize = 11.5, MinHeight = 0, Height = 26, Padding = new Thickness(6, 4, 6, 0), VerticalContentAlignment = VerticalAlignment.Center,
+            Margin = new Thickness(2, 0, 2, 0),
             CornerRadius = new CornerRadius(4), BorderThickness = new Thickness(1), PlaceholderText = "Go to folder or file…",
             PlaceholderForeground = Theme.Brush("TextFaint"), IsSpellCheckEnabled = false,
         };

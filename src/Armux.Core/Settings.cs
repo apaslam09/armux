@@ -19,7 +19,7 @@ public sealed record Settings
 
     public static readonly string[] Themes = ["system", "dark", "light", "high-contrast"];
     public static readonly string[] CursorStyles = ["block", "bar", "underline"];
-    public static readonly string[] SearchEngines = ["bing", "google", "duckduckgo"];
+    public static readonly string[] SearchEngines = ["google", "bing", "duckduckgo"];
     public static readonly string[] Indicators = ["accent", "underline", "none"];
     public static readonly string[] ConfirmCloseModes = ["running", "always", "never"];
 
@@ -71,7 +71,7 @@ public sealed record Settings
     public bool BellNotifies { get; set; } = true;
 
     // ---- Browser
-    public string SearchEngine { get; set; } = "bing";
+    public string SearchEngine { get; set; } = "google";
     /// <summary>Page a new browser tab opens; empty means a blank tab with the address bar focused.</summary>
     public string BrowserHome { get; set; } = "";
 

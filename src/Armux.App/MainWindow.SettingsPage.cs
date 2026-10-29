@@ -656,7 +656,7 @@ public sealed partial class MainWindow
         var s = Theme.Settings;
         body.Children.Add(GroupHeader("Address bar"));
         body.Children.Add(Card("Search engine", "Used when what you type in the address bar is not an address.",
-            Choice(["Bing", "Google", "DuckDuckGo"], Array.IndexOf(Settings.SearchEngines, s.SearchEngine), i => ChangeSettings(x => x with { SearchEngine = Settings.SearchEngines[i] }))));
+            Choice(["Google", "Bing", "DuckDuckGo"], Array.IndexOf(Settings.SearchEngines, s.SearchEngine), i => ChangeSettings(x => x with { SearchEngine = Settings.SearchEngines[i] }))));
         var home = Field(s.BrowserHome, "Blank: focus the address bar", 280);
         home.LostFocus += (_, _) => ChangeSettings(x => x with { BrowserHome = home.Text });
         home.KeyDown += (_, e) => { if (e.Key == VirtualKey.Enter) ChangeSettings(x => x with { BrowserHome = home.Text }); };

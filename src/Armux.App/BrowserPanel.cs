@@ -41,12 +41,14 @@ public sealed partial class BrowserPanel : Grid
             Text = surface.Url,
             PlaceholderText = "Search or enter address",
             FontFamily = new FontFamily(Theme.UiFont),
-            FontSize = 12.5,
+            FontSize = 13,
             Margin = new Thickness(6, 0, 0, 0),
             VerticalAlignment = VerticalAlignment.Center,
-            // Compact like the explorer's path box: the default 32 px box dwarfed the text.
-            MinHeight = 26,
-            Padding = new Thickness(10, 3, 10, 4),
+            // Compact, text centered: the template's 32 px minimum top-aligns the text, so set the height outright.
+            MinHeight = 0,
+            Height = 28,
+            Padding = new Thickness(10, 4, 10, 0),
+            VerticalContentAlignment = VerticalAlignment.Center,
             CornerRadius = new CornerRadius(6),
             BorderThickness = new Thickness(1),
             IsSpellCheckEnabled = false,
@@ -133,9 +135,9 @@ public sealed partial class BrowserPanel : Grid
         string q = Uri.EscapeDataString(input);
         return Theme.Settings.SearchEngine switch
         {
-            "google" => "https://www.google.com/search?q=" + q,
+            "bing" => "https://www.bing.com/search?q=" + q,
             "duckduckgo" => "https://duckduckgo.com/?q=" + q,
-            _ => "https://www.bing.com/search?q=" + q,
+            _ => "https://www.google.com/search?q=" + q,
         };
     }
 
