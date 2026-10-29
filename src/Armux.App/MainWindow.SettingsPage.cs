@@ -91,7 +91,7 @@ public sealed partial class MainWindow
     Grid BuildSettingsPage()
     {
         var page = new Grid { Background = Theme.Brush("Pane") };
-        StyleSettingsControls(page.Resources);
+        Ui.StyleControls(page.Resources);
         page.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(220) });
         page.ColumnDefinitions.Add(new ColumnDefinition());
         page.PreviewKeyDown += OnRecordKey;
@@ -208,32 +208,6 @@ public sealed partial class MainWindow
 
     // ---- building blocks ---------------------------------------------------------------------
 
-    /// <summary>
-    /// Zed's flat controls: buttons, dropdowns and fields on one control color with a thin border, and armux's accent
-    /// for switches and focus instead of the Windows accent. Lightweight styling: these keys are what the built-in
-    /// templates read, overridden for everything on the page.
-    /// </summary>
-    static void StyleSettingsControls(ResourceDictionary r)
-    {
-        void Set(string brush, params string[] keys) { foreach (var k in keys) r[k] = Theme.Brush(brush); }
-        Set("Control", "ButtonBackground", "ButtonBackgroundDisabled", "ComboBoxBackground", "ComboBoxBackgroundDisabled",
-            "ComboBoxDropDownBackground", "TextControlBackground", "TextControlBackgroundPointerOver", "TextControlBackgroundDisabled");
-        Set("ControlHover", "ButtonBackgroundPointerOver", "ComboBoxBackgroundPointerOver", "ComboBoxBackgroundFocused");
-        Set("SelectedRow", "ButtonBackgroundPressed", "ComboBoxBackgroundPressed");
-        Set("Pane", "TextControlBackgroundFocused");
-        Set("Border", "ButtonBorderBrush", "ButtonBorderBrushPointerOver", "ButtonBorderBrushPressed", "ButtonBorderBrushDisabled",
-            "ComboBoxBorderBrush", "ComboBoxBorderBrushPointerOver", "ComboBoxBorderBrushPressed", "ComboBoxDropDownBorderBrush",
-            "TextControlBorderBrush", "TextControlBorderBrushPointerOver");
-        Set("Accent", "TextControlBorderBrushFocused", "ComboBoxBorderBrushFocused", "ToggleSwitchFillOn", "ToggleSwitchFillOnPointerOver",
-            "ToggleSwitchFillOnPressed", "CheckBoxCheckBackgroundFillChecked", "CheckBoxCheckBackgroundFillCheckedPointerOver",
-            "CheckBoxCheckBackgroundFillCheckedPressed", "CheckBoxCheckBackgroundStrokeChecked", "CheckBoxCheckBackgroundStrokeCheckedPointerOver");
-        Set("Text", "ButtonForeground", "ButtonForegroundPointerOver", "ButtonForegroundPressed", "ComboBoxForeground",
-            "ComboBoxForegroundPointerOver", "ComboBoxForegroundPressed", "TextControlForeground", "TextControlForegroundPointerOver",
-            "TextControlForegroundFocused");
-        Set("TextFaint", "ButtonForegroundDisabled", "ComboBoxForegroundDisabled", "TextControlForegroundDisabled");
-        Set("TextDim", "ComboBoxDropDownGlyphForeground", "ToggleSwitchStrokeOff", "ToggleSwitchKnobFillOff");
-    }
-
     static TextBlock PageTitle(string text)
     {
         var t = Ui.Text(text, 22, Theme.Brush("Text"), semibold: true);
@@ -293,7 +267,7 @@ public sealed partial class MainWindow
         note.Visibility = text.Length > 0 ? Visibility.Visible : Visibility.Collapsed;
     }
 
-    /// <summary>A flat button (colors come from <see cref="StyleSettingsControls"/>).</summary>
+    /// <summary>A flat button (colors come from <see cref="Ui.StyleControls"/>).</summary>
     static Button SettingsButton(object content, Action? click)
     {
         var b = new Button { Content = content, Padding = new Thickness(10, 4, 10, 5), MinHeight = 28, FontSize = 13, CornerRadius = new CornerRadius(5) };

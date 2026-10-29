@@ -59,13 +59,7 @@ public sealed partial class BrowserPanel : Grid
             PlaceholderForeground = Theme.Brush("TextFaint"),
         };
         // The default text box turns white with dark text when focused; keep the bar's colors in every state.
-        foreach (var key in new[] { "TextControlBackground", "TextControlBackgroundPointerOver", "TextControlBackgroundFocused" })
-            url.Resources[key] = Theme.Brush("Input");
-        foreach (var key in new[] { "TextControlForeground", "TextControlForegroundPointerOver", "TextControlForegroundFocused" })
-            url.Resources[key] = Theme.Brush("Text");
-        foreach (var key in new[] { "TextControlBorderBrush", "TextControlBorderBrushPointerOver" })
-            url.Resources[key] = Theme.Brush("Border");
-        url.Resources["TextControlBorderBrushFocused"] = Theme.Brush("Accent");
+        Ui.StyleTextBox(url.Resources);
         url.KeyDown += (_, e) =>
         {
             if (e.Key != Windows.System.VirtualKey.Enter) return;

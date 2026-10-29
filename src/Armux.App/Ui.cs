@@ -50,6 +50,64 @@ public static class Ui
         return b;
     }
 
+    /// <summary>A dialog in armux's look (<see cref="ArmuxDialog"/>).</summary>
+    public static ArmuxDialog Dialog(XamlRoot root, string title, object body, string primary, string close = "Cancel") =>
+        new(root, title, body, primary, close);
+
+    /// <summary>
+    /// Flat controls (Zed's look, used by the Settings page and dialogs): buttons, dropdowns and fields on one control
+    /// color with a thin border, and armux's accent for switches and focus instead of the Windows accent. These keys
+    /// are what the built-in templates read, overridden for everything under <paramref name="r"/>'s owner.
+    /// </summary>
+    public static void StyleControls(ResourceDictionary r)
+    {
+        void Set(string brush, params string[] keys) { foreach (var k in keys) Put(r, k, Theme.Brush(brush)); }
+        Set("Control", "ButtonBackground", "ButtonBackgroundDisabled", "ComboBoxBackground", "ComboBoxBackgroundDisabled",
+            "ComboBoxDropDownBackground", "TextControlBackground", "TextControlBackgroundPointerOver", "TextControlBackgroundDisabled");
+        Set("ControlHover", "ButtonBackgroundPointerOver", "ComboBoxBackgroundPointerOver", "ComboBoxBackgroundFocused");
+        Set("SelectedRow", "ButtonBackgroundPressed", "ComboBoxBackgroundPressed");
+        Set("Pane", "TextControlBackgroundFocused");
+        Set("Border", "ButtonBorderBrush", "ButtonBorderBrushPointerOver", "ButtonBorderBrushPressed", "ButtonBorderBrushDisabled",
+            "ComboBoxBorderBrush", "ComboBoxBorderBrushPointerOver", "ComboBoxBorderBrushPressed", "ComboBoxDropDownBorderBrush",
+            "TextControlBorderBrush", "TextControlBorderBrushPointerOver");
+        Put(r, "TextControlBorderThemeThicknessFocused", new Thickness(1));
+        Put(r, "TextControlSelectionHighlightColor", Theme.Brush("Accent"));
+        Set("Accent", "TextControlBorderBrushFocused", "TextControlElevationBorderFocusedBrush", "ComboBoxBorderBrushFocused", "ToggleSwitchFillOn", "ToggleSwitchFillOnPointerOver",
+            "ToggleSwitchFillOnPressed", "CheckBoxCheckBackgroundFillChecked", "CheckBoxCheckBackgroundFillCheckedPointerOver",
+            "CheckBoxCheckBackgroundFillCheckedPressed", "CheckBoxCheckBackgroundStrokeChecked", "CheckBoxCheckBackgroundStrokeCheckedPointerOver");
+        Set("Text", "ButtonForeground", "ButtonForegroundPointerOver", "ButtonForegroundPressed", "ComboBoxForeground",
+            "ComboBoxForegroundPointerOver", "ComboBoxForegroundPressed", "TextControlForeground", "TextControlForegroundPointerOver",
+            "TextControlForegroundFocused");
+        Set("TextFaint", "ButtonForegroundDisabled", "ComboBoxForegroundDisabled", "TextControlForegroundDisabled");
+        Set("TextDim", "ComboBoxDropDownGlyphForeground", "ToggleSwitchStrokeOff", "ToggleSwitchKnobFillOff");
+    }
+
+    /// <summary>
+    /// Text boxes that keep armux's colors when focused: no white focus background, and a solid accent border all
+    /// round (WinUI's focused border is a gradient that fades out along the bottom).
+    /// </summary>
+    public static void StyleTextBox(ResourceDictionary r, string background = "Input")
+    {
+        foreach (var key in new[] { "TextControlBackground", "TextControlBackgroundPointerOver", "TextControlBackgroundFocused" })
+            Put(r, key, Theme.Brush(background));
+        foreach (var key in new[] { "TextControlForeground", "TextControlForegroundPointerOver", "TextControlForegroundFocused" })
+            Put(r, key, Theme.Brush("Text"));
+        foreach (var key in new[] { "TextControlBorderBrush", "TextControlBorderBrushPointerOver" })
+            Put(r, key, Theme.Brush("Border"));
+        foreach (var key in new[] { "TextControlBorderBrushFocused", "TextControlElevationBorderFocusedBrush" })
+            Put(r, key, Theme.Brush("Accent"));
+        Put(r, "TextControlBorderThemeThicknessFocused", new Thickness(1));
+        // The template's border keeps a 32 px minimum; in a shorter box its bottom edge was clipped off.
+        Put(r, "TextControlThemeMinHeight", 0.0);
+    }
+
+    /// <summary>Sets a resource. Replacing a key through the indexer throws (0x800F0902), so an old value goes first.</summary>
+    static void Put(ResourceDictionary r, string key, object value)
+    {
+        r.Remove(key);
+        r[key] = value;
+    }
+
     /// <summary>Solid themed popup background. The default acrylic does not survive window capture.</summary>
     public static Style SolidPresenter(Type target)
     {

@@ -95,13 +95,7 @@ public sealed partial class ExplorerPanel : Grid
             CornerRadius = new CornerRadius(4), BorderThickness = new Thickness(1), PlaceholderText = "Go to folder or file…",
             PlaceholderForeground = Theme.Brush("TextFaint"), IsSpellCheckEnabled = false,
         };
-        foreach (var key in new[] { "TextControlBackground", "TextControlBackgroundPointerOver", "TextControlBackgroundFocused" })
-            location.Resources[key] = Theme.Brush("Input");
-        foreach (var key in new[] { "TextControlForeground", "TextControlForegroundPointerOver", "TextControlForegroundFocused" })
-            location.Resources[key] = Theme.Brush("Text");
-        foreach (var key in new[] { "TextControlBorderBrush", "TextControlBorderBrushPointerOver" })
-            location.Resources[key] = Theme.Brush("Border");
-        location.Resources["TextControlBorderBrushFocused"] = Theme.Brush("Accent");
+        Ui.StyleTextBox(location.Resources);
         ToolTipService.SetToolTip(location, "Type or paste a path, then Enter. ~ is your user folder.");
         Microsoft.UI.Xaml.Automation.AutomationProperties.SetName(location, "Explorer path");
         location.KeyDown += OnLocationKey;
@@ -445,16 +439,7 @@ public sealed partial class ExplorerPanel : Grid
         body.Children.Add(Ui.Text($"In {Shorten(dir)}", 12, Theme.Brush("TextDim")));
         body.Children.Add(box);
         body.Children.Add(error);
-        var dlg = new ContentDialog
-        {
-            XamlRoot = XamlRoot,
-            RequestedTheme = Theme.Dark ? ElementTheme.Dark : ElementTheme.Light,
-            Title = "New file",
-            Content = body,
-            PrimaryButtonText = "Create",
-            CloseButtonText = "Cancel",
-            DefaultButton = ContentDialogButton.Primary,
-        };
+        var dlg = Ui.Dialog(XamlRoot, "New file", body, "Create");
         string? created = null;
         dlg.PrimaryButtonClick += (_, a) =>
         {

@@ -304,13 +304,20 @@ public sealed partial class MainWindow
         });
         var dontAsk = new CheckBox { Content = "Don't ask again" };
         body.Children.Add(dontAsk);
-        var dlg = Dialog("Close armux?", body, "Close");
         closeDialogOpen = true;
         try
         {
-            if (await dlg.ShowAsync() != ContentDialogResult.Primary) return;
+            if (await Dialog("Close armux?", body, "Close").ShowAsync() != ContentDialogResult.Primary) return;
         }
-        catch (Exception ex) { App.Log(nameof(OnWindowClosing), ex); return; }
+        catch (Exception ex)
+        {
+            // The window must still close if the dialog can't be shown (an exception here used to end armux).
+            App.Log(nameof(OnWindowClosing), ex);
+            closeDialogOpen = false;
+            closeConfirmed = true;
+            Close();
+            return;
+        }
         finally { closeDialogOpen = false; }
         if (dontAsk.IsChecked == true) ChangeSettings(x => x with { ConfirmClose = "never" });
         closeConfirmed = true;

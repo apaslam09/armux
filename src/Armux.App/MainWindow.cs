@@ -578,16 +578,7 @@ public sealed partial class MainWindow : Window, IPaneHost, IExplorerHost
             ws.Color = $"#{picker.Color.R:X2}{picker.Color.G:X2}{picker.Color.B:X2}";
     }
 
-    ContentDialog Dialog(string title, UIElement body, string primary) => new()
-    {
-        XamlRoot = root.XamlRoot,
-        RequestedTheme = root.RequestedTheme,
-        Title = title,
-        Content = body,
-        PrimaryButtonText = primary,
-        CloseButtonText = "Cancel",
-        DefaultButton = ContentDialogButton.Primary,
-    };
+    ArmuxDialog Dialog(string title, UIElement body, string primary) => Ui.Dialog(root.XamlRoot, title, body, primary);
 
     // ---- notifications -----------------------------------------------------------------------
 

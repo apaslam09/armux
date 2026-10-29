@@ -76,7 +76,8 @@ public sealed partial class PromptEditor : Grid
             box.Resources[key] = Theme.Brush("Text");
         foreach (var key in new[] { "TextControlBorderBrush", "TextControlBorderBrushPointerOver" })
             box.Resources[key] = Theme.Brush("Border");
-        box.Resources["TextControlBorderBrushFocused"] = Theme.Brush("Accent");
+        box.Resources["TextControlBorderBrushFocused"] = box.Resources["TextControlElevationBorderFocusedBrush"] = Theme.Brush("Accent");
+        box.Resources["TextControlBorderThemeThicknessFocused"] = new Thickness(1);
         // The template's focused state takes the placeholder color from a binding whose fallback ignores the
         // resources above, so the placeholder went near-black on focus. A set PlaceholderForeground wins in every state.
         box.PlaceholderForeground = Theme.Brush("TextDim");
