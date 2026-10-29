@@ -36,10 +36,11 @@ public sealed partial class PromptEditor : Grid
         hint.VerticalAlignment = VerticalAlignment.Center;
         head.Children.Add(hint);
         var buttons = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 6 };
-        var insert = new Button { Content = "Paste", Padding = new Thickness(10, 3, 10, 4) };
+        // Rounded like the Settings page's buttons and the rest of armux.
+        var insert = new Button { Content = "Paste", Padding = new Thickness(10, 3, 10, 4), CornerRadius = new CornerRadius(5) };
         ToolTipService.SetToolTip(insert, "Paste into the terminal without Enter (Ctrl+Enter)");
         insert.Click += (_, _) => Submit(enter: false);
-        var send = new Button { Content = "Send", Padding = new Thickness(12, 3, 12, 4), Style = (Style)Application.Current.Resources["AccentButtonStyle"] };
+        var send = new Button { Content = "Send", Padding = new Thickness(12, 3, 12, 4), CornerRadius = new CornerRadius(5), Style = (Style)Application.Current.Resources["AccentButtonStyle"] };
         ToolTipService.SetToolTip(send, "Paste and press Enter (Enter)");
         // armux's accent, not the Windows accent color.
         foreach (var key in new[] { "AccentButtonBackground", "AccentButtonBackgroundPointerOver", "AccentButtonBackgroundPressed" })
@@ -63,6 +64,7 @@ public sealed partial class PromptEditor : Grid
             FontFamily = new FontFamily(Theme.UiFont),
             FontSize = 14,
             PlaceholderText = "Write a prompt…",
+            CornerRadius = new CornerRadius(6),
         };
         ScrollViewer.SetVerticalScrollBarVisibility(box, ScrollBarVisibility.Auto);
         Microsoft.UI.Xaml.Automation.AutomationProperties.SetName(box, "Prompt");
