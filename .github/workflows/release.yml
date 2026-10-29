@@ -60,11 +60,13 @@ jobs:
       - name: Create or update the release
         run: |
           $notes = "docs/releases/$env:TAG.md"
+          # Titled "armux 0.4.0", without the tag's v.
+          $title = "armux " + $env:TAG.TrimStart('v')
           gh release view $env:TAG *> $null
           if ($LASTEXITCODE -eq 0) {
             gh release upload $env:TAG $env:ZIP "$env:ZIP.sha256" --clobber
           } elseif (Test-Path $notes) {
-            gh release create $env:TAG $env:ZIP "$env:ZIP.sha256" --title "armux $env:TAG" --notes-file $notes
+            gh release create $env:TAG $env:ZIP "$env:ZIP.sha256" --title $title --notes-file $notes
           } else {
-            gh release create $env:TAG $env:ZIP "$env:ZIP.sha256" --title "armux $env:TAG" --generate-notes
+            gh release create $env:TAG $env:ZIP "$env:ZIP.sha256" --title $title --generate-notes
           }
