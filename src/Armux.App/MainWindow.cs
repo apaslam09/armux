@@ -159,7 +159,13 @@ public sealed partial class MainWindow : Window, IPaneHost, IExplorerHost
         {
             IsActiveWindow = e.WindowActivationState != WindowActivationState.Deactivated;
             state.WindowActive = IsActiveWindow;
+            if (IsActiveWindow) RescueFocusSoon();
         };
+        // Keys reach the shortcut handler only through a focused element: never leave the window with none (D-41).
+        EventHandler<Microsoft.UI.Xaml.Input.FocusManagerLostFocusEventArgs> lostFocus = (_, _) => RescueFocusSoon();
+        Microsoft.UI.Xaml.Input.FocusManager.LostFocus += lostFocus;
+        Closed += (_, _) => Microsoft.UI.Xaml.Input.FocusManager.LostFocus -= lostFocus;
+        browsers.PageKey = OnPageKey;
         Toasts.Invoked += JumpToSurface;
         // "Match Windows" follows app-mode and contrast-theme changes while armux runs.
         uiSettings.ColorValuesChanged += (_, _) => DispatcherQueue.TryEnqueue(() =>
@@ -427,6 +433,18 @@ public sealed partial class MainWindow : Window, IPaneHost, IExplorerHost
         if (FocusedTerminal() is { } t) t.Focus(FocusState.Programmatic);
         else if (Focused?.Selected is { } s && panels.TryGetValue(s, out var p) && p is FileView { Editable: true } editor) editor.FocusEditor();
         else keySink.Focus(FocusState.Programmatic);
+    });
+
+    /// <summary>
+    /// When nothing in the window has the keyboard (the focused control was removed, or a click landed on something
+    /// that takes no focus), give it back: to the terminal, or to the key sink over the Settings page.
+    /// </summary>
+    void RescueFocusSoon() => DispatcherQueue.TryEnqueue(Microsoft.UI.Dispatching.DispatcherQueuePriority.Low, () =>
+    {
+        if (!IsActiveWindow || palette.IsOpen || root.XamlRoot is not { } xamlRoot || Microsoft.UI.Xaml.Input.FocusManager.GetFocusedElement(xamlRoot) is not null) return;
+        if (VisualTreeHelper.GetOpenPopupsForXamlRoot(xamlRoot).Count > 0) return;
+        if (settingsPage is not null) keySink.Focus(FocusState.Programmatic);
+        else FocusKeys();
     });
 
     /// <summary>After a click or tab switch: focus the terminal, but leave focus alone for browser and file tabs.</summary>

@@ -58,6 +58,19 @@ public readonly record struct Chord(bool Ctrl, bool Alt, bool Shift, string Key)
     public override string ToString() =>
         string.Join("+", new[] { Ctrl ? "Ctrl" : null, Alt ? "Alt" : null, Shift ? "Shift" : null, Key }.Where(s => s is not null));
 
+    /// <summary>
+    /// A key a text box or web page uses for editing (caret moves and selection, clipboard, undo, Enter), which a
+    /// shortcut on the same chord leaves to it.
+    /// </summary>
+    public bool IsTextEditing => !Alt && (Key is "LEFT" or "RIGHT" or "UP" or "DOWN" or "HOME" or "END" or "INSERT" or "DELETE" or "ENTER"
+        || Ctrl && Key is "A" or "C" or "V" or "X" or "Z" or "Y" && (!Shift || Key == "Z"));
+
+    /// <summary>A compact form for web pages: "1", "0" for Ctrl, Alt, Shift, then the key ("101T" is Ctrl+Shift+T).</summary>
+    public string Code => $"{(Ctrl ? 1 : 0)}{(Alt ? 1 : 0)}{(Shift ? 1 : 0)}{Key}";
+
+    public static Chord? FromCode(string code) =>
+        code.Length >= 4 && code[..3].All(c => c is '0' or '1') ? new Chord(code[0] == '1', code[1] == '1', code[2] == '1', code[3..]) : null;
+
     /// <summary>For people: "Ctrl+PAGEDOWN" reads "Ctrl+PageDown". "" stays "".</summary>
     public static string Display(string chord)
     {

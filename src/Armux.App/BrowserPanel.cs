@@ -103,6 +103,17 @@ public sealed partial class BrowserPanel : Grid
         core.DocumentTitleChanged += (_, _) => { if (!Surface.MockPage && core.DocumentTitle.Length > 0) Surface.Title = core.DocumentTitle; };
         // Links that open a new window load in this panel instead of a separate browser window.
         core.NewWindowRequested += (_, e) => { e.Handled = true; core.Navigate(e.Uri); };
+        // armux shortcuts typed in the page come back here (D-41); the page asks for the chord list when it loads.
+        core.WebMessageReceived += (_, e) =>
+        {
+            string? json;
+            try { json = e.TryGetWebMessageAsString(); } catch (ArgumentException) { return; }
+            if (json is null || !json.StartsWith(BrowserHost.Token, StringComparison.Ordinal)) return;
+            var body = json[BrowserHost.Token.Length..];
+            if (body == "hello") host.SendKeys(core);
+            else if (Chord.FromCode(body) is { } chord) host.PageKey?.Invoke(chord);
+        };
+        await core.AddScriptToExecuteOnDocumentCreatedAsync(BrowserHost.KeyScript);
         if (Surface.MockPage) Web.NavigateToString(MockPage(Surface.Url));
         else if (Surface.Url.Length > 0) core.Navigate(Surface.Url);
         else url.Focus(FocusState.Programmatic);
@@ -288,6 +299,61 @@ public sealed class BrowserHost
     public BrowserHost(Microsoft.UI.Dispatching.DispatcherQueue queue) => this.queue = queue;
 
     public int LiveCount => live.Count;
+
+    // ---- shortcuts typed in pages (D-41) ------------------------------------------------------------
+
+    /// <summary>
+    /// Proves a message came from <see cref="KeyScript"/>: the page's own scripts can't read it from the script's
+    /// closure, and the script only reports real key presses (<c>isTrusted</c>), so a page can't run armux commands.
+    /// </summary>
+    internal static readonly string Token = "armux-key:" + Guid.NewGuid().ToString("N") + ":";
+
+    /// <summary>Called with a shortcut typed in a page.</summary>
+    public Action<Chord>? PageKey { get; set; }
+    string keys = "[]";
+
+    /// <summary>The chords pages hand back (<see cref="Chord.Code"/> form); sent to every page that has loaded.</summary>
+    public void SetKeys(IEnumerable<string> codes)
+    {
+        keys = "[" + string.Join(",", codes.Select(BrowserPanel.Json)) + "]";
+        foreach (var p in live) if (p.Web?.CoreWebView2 is { } core) SendKeys(core);
+    }
+
+    internal void SendKeys(CoreWebView2 core)
+    {
+        try { core.PostWebMessageAsJson("{\"armuxKeys\":" + keys + "}"); }
+        catch (Exception) { /* the page is closing or suspended; it asks again when it next loads */ }
+    }
+
+    /// <summary>
+    /// Added to every document before its own scripts. A capture listener on the window, registered first, sees each
+    /// key before the page does; armux's chords are stopped there and reported, every other key is left to the page.
+    /// </summary>
+    internal static string KeyScript => $$"""
+        (() => {
+          const w = window.chrome && window.chrome.webview;
+          if (!w || window.top !== window) return;
+          const token = {{BrowserPanel.Json(Token)}}, post = w.postMessage.bind(w);
+          let keys = new Set();
+          w.addEventListener('message', e => { if (e.data && Array.isArray(e.data.armuxKeys)) keys = new Set(e.data.armuxKeys); });
+          const named = { Equal: '=', Minus: '-', NumpadAdd: '=', NumpadSubtract: '-', Numpad0: '0', BracketLeft: '[', BracketRight: ']',
+            Comma: ',', Period: '.', Slash: '/', Semicolon: ';', Quote: "'", Backquote: '`', Backslash: '\\', Space: 'SPACE',
+            Home: 'HOME', End: 'END', Insert: 'INSERT', Delete: 'DELETE', Enter: 'ENTER', NumpadEnter: 'ENTER', Tab: 'TAB',
+            ArrowLeft: 'LEFT', ArrowRight: 'RIGHT', ArrowUp: 'UP', ArrowDown: 'DOWN', PageUp: 'PAGEUP', PageDown: 'PAGEDOWN' };
+          window.addEventListener('keydown', e => {
+            if (!e.isTrusted || keys.size === 0) return;
+            const c = e.code;
+            const k = /^Key[A-Z]$/.test(c) ? c.slice(3) : /^Digit[0-9]$/.test(c) ? c.slice(5) : /^F([1-9]|1[0-2])$/.test(c) ? c : named[c];
+            if (!k) return;
+            const code = (e.ctrlKey ? '1' : '0') + (e.altKey ? '1' : '0') + (e.shiftKey ? '1' : '0') + k;
+            if (!keys.has(code)) return;
+            e.preventDefault();
+            e.stopImmediatePropagation();
+            post(token + code);
+          }, true);
+          post(token + 'hello');
+        })();
+        """;
 
     /// <summary>The browser panel shown most recently that still has a page.</summary>
     public BrowserPanel? MostRecent => live.First?.Value;

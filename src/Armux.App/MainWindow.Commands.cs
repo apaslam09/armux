@@ -16,7 +16,9 @@ public sealed partial class MainWindow
     readonly List<CommandEntry> entries = [];
     readonly List<(string Chord, string Description, Action Run)> fixedKeys = [];
     List<Command> commands = [];
-    readonly Dictionary<Chord, Func<bool>> keymap = [];
+    readonly Dictionary<Chord, (string Id, Func<bool> Run)> keymap = [];
+    /// <summary>The last chord the window's key handler saw, and when (see <see cref="OnPageKey"/>).</summary>
+    (Chord Chord, long At) lastChord;
     Keymap keys = new(new Dictionary<string, string>());
     string group = "";
     int simulated;
@@ -44,11 +46,23 @@ public sealed partial class MainWindow
         foreach (var e in entries) fresh.AddDefault(e.Id, keys.Default(e.Id));
         keys = fresh;
         keymap.Clear();
-        foreach (var (chord, _, run) in fixedKeys) keymap[Chord.Parse(chord)] = () => { run(); return true; };
+        foreach (var (chord, description, run) in fixedKeys) keymap[Chord.Parse(chord)] = (description, () => { run(); return true; });
         // Rebindable commands win over fixed keys on the same chord.
         foreach (var e in entries)
-            if (keys.Effective(e.Id) is { Length: > 0 } c) keymap[Chord.Parse(c)] = e.Run;
-        commands = [.. entries.Select(e => new Command(e.Id, e.Id, Chord.Display(keys.Effective(e.Id)), () => e.Run()))];
+            if (keys.Effective(e.Id) is { Length: > 0 } c) keymap[Chord.Parse(c)] = (e.Id, e.Run);
+        commands = [.. entries.Select(e => new Command(e.Id, e.Id, Chord.Display(keys.Effective(e.Id)), () => RunCommand(e.Id, e.Run)))];
+        // Browser pages hand these chords back to armux instead of using them (Ctrl+L focuses the address bar).
+        browsers.SetKeys([.. keymap.Keys.Where(c => !c.IsTextEditing).Append(new Chord(true, false, false, "L")).Select(c => c.Code).Distinct()]);
+    }
+
+    /// <summary>Commands that work over the Settings page; any other command closes it first, so its effect is seen.</summary>
+    static bool KeepsSettingsOpen(string id) =>
+        id is "Settings" or "Toggle Full Screen" or "Zoom In" or "Zoom Out" or "Reset Zoom" or "Command Palette" || id.StartsWith("Theme:", StringComparison.Ordinal);
+
+    bool RunCommand(string id, Func<bool> run)
+    {
+        if (settingsPage is not null && !KeepsSettingsOpen(id)) CloseSettingsPage();
+        return run();
     }
 
     Workspace? Ws => state.Current;
@@ -242,31 +256,48 @@ public sealed partial class MainWindow
         _ => null,
     };
 
+    /// <summary>
+    /// The root's PreviewKeyDown sees every key typed anywhere in the window (terminal, Settings page, explorer,
+    /// text boxes) before the focused control does, so shortcuts work wherever the keyboard is (D-41).
+    /// </summary>
     void OnKey(object sender, KeyRoutedEventArgs e)
     {
         if (palette.IsOpen || recordingShortcut is not null) return;
-        if (settingsPage is not null)
-        {
-            // While Settings is open only Esc and the window-level shortcuts act; the rest belongs to its controls.
-            if (e.Key == VirtualKey.Escape) { e.Handled = true; EscapeSettingsPage(); return; }
-            if (KeyName(e.Key) is not { } k) return;
-            var pressed = new Chord(Down(VirtualKey.Control), Down(VirtualKey.Menu), Down(VirtualKey.Shift), k);
-            foreach (var id in (string[])["Settings", "Open settings.json", "Toggle Full Screen"])
-                if (keys.Effective(id) is { Length: > 0 } sc && pressed == Chord.Parse(sc) && entries.FirstOrDefault(x => x.Id == id) is { } cmd)
-                { e.Handled = true; cmd.Run(); return; }
-            return;
-        }
+        if (settingsPage is not null && e.Key == VirtualKey.Escape) { e.Handled = true; EscapeSettingsPage(); return; }
         if (KeyName(e.Key) is not { } key) return;
         var chord = new Chord(Down(VirtualKey.Control), Down(VirtualKey.Menu), Down(VirtualKey.Shift), key);
+        // Caret, selection, clipboard and undo keys stay with a focused text box (settings search, address bar, editors).
+        if (chord.IsTextEditing && FocusManager.GetFocusedElement(root.XamlRoot)
+            is Microsoft.UI.Xaml.Controls.TextBox or Microsoft.UI.Xaml.Controls.PasswordBox or Microsoft.UI.Xaml.Controls.RichEditBox) return;
+        lastChord = (chord, Environment.TickCount64);
+        if (RunChord(chord)) e.Handled = true;
+    }
+
+    /// <summary>Runs the shortcut on <paramref name="chord"/>; false when there is none or it declined the key.</summary>
+    bool RunChord(Chord chord)
+    {
         // Ctrl+L belongs to the shell in a terminal, and focuses the address bar in a browser tab (Edge default, D-03).
-        if (chord == new Chord(true, false, false, "L") && Focused?.Selected is { Kind: PanelKind.Browser } b
+        if (settingsPage is null && chord == new Chord(true, false, false, "L") && Focused?.Selected is { Kind: PanelKind.Browser } b
             && panels.TryGetValue(b, out var panel) && panel is BrowserPanel bp)
         {
-            e.Handled = true;
             bp.FocusAddress();
-            return;
+            return true;
         }
-        if (keymap.TryGetValue(chord, out var run) && run()) e.Handled = true;
+        if (!keymap.TryGetValue(chord, out var cmd)) return false;
+        // Over the Settings page a clipboard or arrow key has no terminal to act on; leave the page open.
+        if (settingsPage is not null && chord.IsTextEditing) return false;
+        return RunCommand(cmd.Id, cmd.Run);
+    }
+
+    /// <summary>
+    /// A shortcut typed in a browser page, which WebView2 keeps from the window's key events. Skipped when the
+    /// window's own key handler ran the same chord a moment ago, so it never runs twice.
+    /// </summary>
+    void OnPageKey(Chord chord)
+    {
+        if (palette.IsOpen || recordingShortcut is not null) return;
+        if (lastChord.Chord == chord && Environment.TickCount64 - lastChord.At < 250) return;
+        RunChord(chord);
     }
 
     // ---- actions -------------------------------------------------------------------------------
