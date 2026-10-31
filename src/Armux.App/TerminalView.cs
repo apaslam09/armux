@@ -84,7 +84,15 @@ public sealed partial class TerminalView : UserControl
 
         SizeChanged += (_, _) => { if (!session.Started) ApplySize(); else resize.Restart(); };
         Loaded += (_, _) => { session.Changed -= OnChanged; session.Changed += OnChanged; Render(force: true); };
-        Unloaded += (_, _) => { session.Changed -= OnChanged; blink.Stop(); };
+        // A split or close moves this view to a new parent, and WinUI can raise the new Loaded before the old
+        // Unloaded. Unsubscribing right away then left the view deaf: the shell ran but nothing redrew until a
+        // workspace switch loaded it again. Decide after the move whether it is really gone.
+        Unloaded += (_, _) => DispatcherQueue.TryEnqueue(() =>
+        {
+            if (IsLoaded) return;
+            session.Changed -= OnChanged;
+            blink.Stop();
+        });
         GotFocus += (_, _) => { hasFocus = true; if (session.Terminal.FocusReporting) session.Send("\u001b[I"); DrawCursor(); };
         LostFocus += (_, _) => { hasFocus = false; keyDownSeen = false; if (session.Terminal.FocusReporting) session.Send("\u001b[O"); DrawCursor(); };
         CharacterReceived += OnCharacter;
