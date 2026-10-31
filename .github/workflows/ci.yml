@@ -34,6 +34,15 @@ jobs:
           "PROCESSOR_ARCHITECTURE=$env:PROCESSOR_ARCHITECTURE"
           if ($env:PROCESSOR_ARCHITECTURE -ne 'ARM64') { throw "Expected an ARM64 runner" }
 
+      - name: Test PE header validation (Pester 5)
+        run: |
+          if (-not (Get-Module -ListAvailable Pester |
+              Where-Object { $_.Version -eq [version]'5.9.1' })) {
+            Install-Module Pester -RequiredVersion 5.9.1 -Scope CurrentUser -Force -SkipPublisherCheck
+          }
+          Import-Module Pester -RequiredVersion 5.9.1 -ErrorAction Stop
+          Invoke-Pester scripts -CI
+
       - uses: actions/setup-dotnet@v6
         with:
           global-json-file: global.json

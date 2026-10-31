@@ -22,9 +22,21 @@ foreach ($p in $Path) {
         continue
     }
     $bytes = [System.IO.File]::ReadAllBytes((Resolve-Path -LiteralPath $p))
+    # A DOS header needs 0x40 bytes before e_lfanew can be read.
+    if ($bytes.Length -lt 0x40 -or $bytes[0] -ne 0x4D -or $bytes[1] -ne 0x5A) {
+        "FAIL ${p}: not a PE file"
+        $failed = $true
+        continue
+    }
     $peOffset = [BitConverter]::ToInt32($bytes, 0x3C)
+    # The signature (4 bytes) and Machine field (2 bytes) must both fit.
+    if ($peOffset -lt 0x40 -or $peOffset -gt ($bytes.Length - 6)) {
+        "FAIL ${p}: not a PE file"
+        $failed = $true
+        continue
+    }
     $sig = [BitConverter]::ToUInt32($bytes, $peOffset)
-    if ($bytes[0] -ne 0x4D -or $bytes[1] -ne 0x5A -or $sig -ne 0x00004550) {
+    if ($sig -ne 0x00004550) {
         "FAIL ${p}: not a PE file"
         $failed = $true
         continue
