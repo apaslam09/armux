@@ -227,7 +227,10 @@ public sealed partial class BrowserPanel : Grid
     {
         var done = new TaskCompletionSource<bool>();
         void Completed(CoreWebView2 s, CoreWebView2NavigationCompletedEventArgs e) => done.TrySetResult(e.IsSuccess);
+        // Pages that change the address without loading (pushState, #hash; DuckDuckGo's tabs) raise no NavigationCompleted.
+        void SameDocument(CoreWebView2 s, CoreWebView2SourceChangedEventArgs e) { if (!e.IsNewDocument) done.TrySetResult(true); }
         core.NavigationCompleted += Completed;
+        core.SourceChanged += SameDocument;
         try
         {
             start();
@@ -235,7 +238,7 @@ public sealed partial class BrowserPanel : Grid
             if (first != done.Task) return $"still loading after {timeout.TotalSeconds:0} s: {core.Source}";
             return (done.Task.Result ? "loaded " : "failed to load ") + core.Source;
         }
-        finally { core.NavigationCompleted -= Completed; }
+        finally { core.NavigationCompleted -= Completed; core.SourceChanged -= SameDocument; }
     }
 
     /// <summary>Console messages and page errors since capture started (the first call starts it; the last 200 are kept).</summary>

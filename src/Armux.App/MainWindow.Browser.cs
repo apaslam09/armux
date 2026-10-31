@@ -23,7 +23,9 @@ public sealed partial class MainWindow
         try
         {
             string output = await RunBrowserCommand(panel, r);
-            return new Response { Ok = true, Output = output.Length > MaxOutput ? output[..MaxOutput] + "\n… (cut)" : output };
+            // A screenshot is base64 and must arrive whole; cutting it made "Invalid Base64 string".
+            bool cut = output.Length > MaxOutput && r.Command != "browser-screenshot";
+            return new Response { Ok = true, Output = cut ? output[..MaxOutput] + "\n… (cut)" : output };
         }
         catch (InvalidOperationException e) { return new Response { Error = e.Message }; }
         catch (TimeoutException) { return new Response { Error = "the page did not answer in time" }; }
@@ -194,7 +196,8 @@ public sealed partial class MainWindow
             if (el.type === 'checkbox' || el.type === 'radio') line += el.checked ? ' checked' : ' unchecked';
             else if (/^(INPUT|TEXTAREA|SELECT)$/.test(el.tagName) && el.value) line += secret(el) ? ' value=(hidden)' : ' value="' + clean(el.value) + '"';
             if (el.disabled) line += ' disabled';
-            if (el.tagName === 'A') line += ' -> ' + el.getAttribute('href').slice(0, 120);
+            // [role=link] also matches <a> without href (Google's results page has them).
+            if (el.tagName === 'A' && el.getAttribute('href')) line += ' -> ' + el.getAttribute('href').slice(0, 120);
             out.push(line);
           }
           return 'url: ' + location.href + '\ntitle: ' + document.title + '\nscroll: ' + Math.round(scrollY) + ' of '
