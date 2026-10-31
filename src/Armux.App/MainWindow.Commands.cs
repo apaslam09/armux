@@ -50,19 +50,9 @@ public sealed partial class MainWindow
         // Rebindable commands win over fixed keys on the same chord.
         foreach (var e in entries)
             if (keys.Effective(e.Id) is { Length: > 0 } c) keymap[Chord.Parse(c)] = (e.Id, e.Run);
-        commands = [.. entries.Select(e => new Command(e.Id, e.Id, Chord.Display(keys.Effective(e.Id)), () => RunCommand(e.Id, e.Run)))];
+        commands = [.. entries.Select(e => new Command(e.Id, e.Id, Chord.Display(keys.Effective(e.Id)), () => e.Run()))];
         // Browser pages hand these chords back to armux instead of using them (Ctrl+L focuses the address bar).
         browsers.SetKeys([.. keymap.Keys.Where(c => !c.IsTextEditing).Append(new Chord(true, false, false, "L")).Select(c => c.Code).Distinct()]);
-    }
-
-    /// <summary>Commands that work over the Settings page; any other command closes it first, so its effect is seen.</summary>
-    static bool KeepsSettingsOpen(string id) =>
-        id is "Settings" or "Toggle Full Screen" or "Zoom In" or "Zoom Out" or "Reset Zoom" or "Command Palette" || id.StartsWith("Theme:", StringComparison.Ordinal);
-
-    bool RunCommand(string id, Func<bool> run)
-    {
-        if (settingsPage is not null && !KeepsSettingsOpen(id)) CloseSettingsPage();
-        return run();
     }
 
     Workspace? Ws => state.Current;
@@ -257,8 +247,9 @@ public sealed partial class MainWindow
     };
 
     /// <summary>
-    /// The root's PreviewKeyDown sees every key typed anywhere in the window (terminal, Settings page, explorer,
-    /// text boxes) before the focused control does, so shortcuts work wherever the keyboard is (D-41).
+    /// The root's PreviewKeyDown sees every key typed anywhere in the window (terminal, explorer, text boxes) before
+    /// the focused control does, so shortcuts work wherever the keyboard is (D-41). The Settings page is the
+    /// exception: there only Esc and the Settings shortcut (Ctrl+,) act, to close it.
     /// </summary>
     void OnKey(object sender, KeyRoutedEventArgs e)
     {
@@ -284,9 +275,9 @@ public sealed partial class MainWindow
             return true;
         }
         if (!keymap.TryGetValue(chord, out var cmd)) return false;
-        // Over the Settings page a clipboard or arrow key has no terminal to act on; leave the page open.
-        if (settingsPage is not null && chord.IsTextEditing) return false;
-        return RunCommand(cmd.Id, cmd.Run);
+        // Over the Settings page every other key belongs to its controls (requested).
+        if (settingsPage is not null && cmd.Id != "Settings") return false;
+        return cmd.Run();
     }
 
     /// <summary>
