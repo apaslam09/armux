@@ -53,6 +53,11 @@ public sealed partial class MainWindow : Window, IPaneHost, IExplorerHost
     public bool IsActiveWindow { get; private set; } = true;
 
     readonly Viewbox zoomHost = new() { Stretch = Stretch.Fill };
+    /// <summary>
+    /// The window's own presenter, kept so its minimum size can be set: under NativeAOT, casting
+    /// <c>AppWindow.Presenter</c> to <see cref="OverlappedPresenter"/> fails. Full screen returns to this one.
+    /// </summary>
+    readonly OverlappedPresenter presenter = OverlappedPresenter.Create();
     readonly Windows.UI.ViewManagement.UISettings uiSettings = new();
 
     void ApplyZoom(Windows.Foundation.Size size)
@@ -85,7 +90,7 @@ public sealed partial class MainWindow : Window, IPaneHost, IExplorerHost
     /// </summary>
     void UpdateMinSize()
     {
-        if (AppWindow.Presenter is not OverlappedPresenter presenter || root.XamlRoot is not { } xr) return;
+        if (AppWindow.Presenter.Kind != AppWindowPresenterKind.Overlapped || root.XamlRoot is not { } xr) return;
         double scale = xr.RasterizationScale, k = Theme.Settings.Zoom;
         // RightInset is the caption buttons' width in physical pixels; 0 before the title bar is set up.
         double caption = AppWindow.TitleBar.RightInset > 0 ? AppWindow.TitleBar.RightInset : 138 * scale;
@@ -123,6 +128,7 @@ public sealed partial class MainWindow : Window, IPaneHost, IExplorerHost
         Title = "armux";
         ExtendsContentIntoTitleBar = true;
         AppWindow.TitleBar.PreferredHeightOption = TitleBarHeightOption.Standard;
+        AppWindow.SetPresenter(presenter);
         AppWindow.Resize(new Windows.Graphics.SizeInt32(opts.Width, opts.Height));
         try { AppWindow.SetIcon(Path.Combine(AppContext.BaseDirectory, "Assets", "armux.ico")); }
         catch (Exception e) { App.Log("SetIcon", e); }

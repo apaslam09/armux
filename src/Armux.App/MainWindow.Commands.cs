@@ -335,7 +335,9 @@ public sealed partial class MainWindow
     void ToggleFullScreen()
     {
         bool full = AppWindow.Presenter.Kind == Microsoft.UI.Windowing.AppWindowPresenterKind.FullScreen;
-        AppWindow.SetPresenter(full ? Microsoft.UI.Windowing.AppWindowPresenterKind.Overlapped : Microsoft.UI.Windowing.AppWindowPresenterKind.FullScreen);
+        // Back to the window's own presenter, which carries the minimum size (D-39).
+        if (full) AppWindow.SetPresenter(presenter);
+        else AppWindow.SetPresenter(Microsoft.UI.Windowing.AppWindowPresenterKind.FullScreen);
     }
 
     void SetTheme(ThemeKind kind)
