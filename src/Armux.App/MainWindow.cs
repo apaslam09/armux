@@ -182,6 +182,7 @@ public sealed partial class MainWindow : Window, IPaneHost, IExplorerHost
         pipe = new PipeServer(DispatcherQueue, HandleRequest);
         pipe.Start();
         WatchSettingsFile();
+        if (Theme.Settings.BrowserControl) SyncClaudeMcp(remove: false);
         StartSessionSaving();
         AppWindow.Closing += OnWindowClosing;
         Closed += (_, _) =>

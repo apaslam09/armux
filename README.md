@@ -56,11 +56,7 @@ armux list                                        # workspaces and tabs with the
 
 ### Browser tools for Claude Code
 
-Turn on Settings › Browser › Let agents control the browser, then register the MCP server once:
-
-```powershell
-claude mcp add armux -s user -- "C:\path\to\armux\armux.com" mcp
-```
+Turn on Settings › Browser › Let agents control the browser. armux then adds itself to Claude Code's MCP servers (`mcpServers` in `~/.claude.json`, pointing at its own `armux.com mcp`), keeps that path current if you move armux, and removes the entry when you turn the setting off. Restart Claude Code sessions that were already running.
 
 Claude Code started in an armux terminal then has `browser_tabs`, `browser_open`, `browser_navigate`, `browser_history`, `browser_snapshot`, `browser_text`, `browser_click`, `browser_fill`, `browser_type`, `browser_press_key`, `browser_scroll`, `browser_evaluate`, `browser_screenshot` and `browser_console`. They work on armux's own browser tabs, in the window Claude Code runs in, and send input to the page only.
 

@@ -40,7 +40,24 @@ public sealed partial class MainWindow
         if (next.WorkspaceIndicator != old.WorkspaceIndicator) state.Indicator = Indicator(next.WorkspaceIndicator);
         if (!next.Keybindings.OrderBy(k => k.Key).SequenceEqual(old.Keybindings.OrderBy(k => k.Key))) RebuildKeymap();
         if (next.TaskbarStatus != old.TaskbarStatus) UpdateTaskbar();
+        if (next.BrowserControl != old.BrowserControl) SyncClaudeMcp(remove: !next.BrowserControl);
         if (window && settingsPage is not null) ShowSettingsPage(settingsSection);
+    }
+
+    /// <summary>
+    /// Keeps Claude Code's <c>armux</c> MCP entry in step with <see cref="Settings.BrowserControl"/> (D-40): added (or
+    /// pointed at this armux.com) while it is on, removed when it is turned off. Runs off the UI thread.
+    /// </summary>
+    static void SyncClaudeMcp(bool remove)
+    {
+        var cli = Path.Combine(AppContext.BaseDirectory, "armux.com");
+        if (!remove && !File.Exists(cli)) return;
+        var config = ClaudeMcp.ConfigPath();
+        Task.Run(() =>
+        {
+            try { if (remove) ClaudeMcp.Unregister(config); else ClaudeMcp.Register(config, cli); }
+            catch (Exception e) { App.Log(nameof(SyncClaudeMcp), e); }
+        });
     }
 
     static IndicatorStyle Indicator(string setting) => setting switch
