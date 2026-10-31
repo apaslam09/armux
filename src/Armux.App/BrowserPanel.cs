@@ -1,4 +1,5 @@
 using System.Runtime.InteropServices;
+using System.Text.Json;
 using Armux.Core;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
@@ -144,8 +145,121 @@ public sealed partial class BrowserPanel : Grid
         webHost.Children.Remove(Web);
         Web.Close();
         Web = null;
+        consoleOn = false;
+        console.Clear();
         ShowPlaceholder(reason);
     }
+
+    // ---- agent control (armux mcp, MainWindow.Browser.cs) ---------------------------------------
+
+    readonly List<string> console = [];
+    bool consoleOn;
+
+    /// <summary>The page, once its WebView2 is up (a tab that was just opened takes a moment); resumed if it was suspended.</summary>
+    internal async Task<CoreWebView2> ReadyAsync()
+    {
+        for (int i = 0; i < 150 && Web?.CoreWebView2 is null && (IsLoaded || Web is not null); i++) await Task.Delay(100);
+        if (Web?.CoreWebView2 is not { } core)
+            throw new InvalidOperationException($"browser tab {Surface.Id} is not loaded: show it in armux first");
+        if (core.IsSuspended) core.Resume();
+        return core;
+    }
+
+    /// <summary>After an agent command on a hidden tab: suspend it again.</summary>
+    internal void Settle() { if (!IsLoaded) host.Hidden(this); }
+
+    /// <summary>A Chrome DevTools Protocol call on this page. Input goes to the page only, never to Windows.</summary>
+    internal async Task<JsonDocument> CdpAsync(string method, string parameters = "{}")
+    {
+        var core = await ReadyAsync();
+        return JsonDocument.Parse(await core.CallDevToolsProtocolMethodAsync(method, parameters));
+    }
+
+    /// <summary>Evaluates JavaScript (awaiting a promise) and returns its JSON value; a page exception becomes an error.</summary>
+    internal async Task<JsonElement?> EvalAsync(string expression)
+    {
+        using var doc = await CdpAsync("Runtime.evaluate", $$"""{"expression":{{Json(expression)}},"returnByValue":true,"awaitPromise":true}""");
+        var root = doc.RootElement;
+        if (root.TryGetProperty("exceptionDetails", out var ex))
+        {
+            string text = ex.TryGetProperty("exception", out var e) && e.TryGetProperty("description", out var d) ? d.GetString() ?? "" : ex.GetProperty("text").GetString() ?? "";
+            throw new InvalidOperationException("page error: " + text);
+        }
+        return root.GetProperty("result").TryGetProperty("value", out var v) ? v.Clone() : null;
+    }
+
+    /// <summary>Navigates (address or search) and waits up to 20 s for the page to finish loading.</summary>
+    internal async Task<string> NavigateAsync(string input)
+    {
+        var target = AddressOrSearch(input) ?? throw new InvalidOperationException("give an address");
+        var core = await ReadyAsync();
+        url.Text = target;
+        Surface.Url = target;
+        return await WaitForLoad(core, () => core.Navigate(target), TimeSpan.FromSeconds(20));
+    }
+
+    /// <summary>Back, forward or reload; same-page history steps finish without a load, so the wait is short.</summary>
+    internal async Task<string> HistoryAsync(string what)
+    {
+        var core = await ReadyAsync();
+        Action go = what switch
+        {
+            "back" when core.CanGoBack => core.GoBack,
+            "forward" when core.CanGoForward => core.GoForward,
+            "reload" => core.Reload,
+            _ => throw new InvalidOperationException($"can't go {what}"),
+        };
+        return await WaitForLoad(core, go, TimeSpan.FromSeconds(10));
+    }
+
+    static async Task<string> WaitForLoad(CoreWebView2 core, Action start, TimeSpan timeout)
+    {
+        var done = new TaskCompletionSource<bool>();
+        void Completed(CoreWebView2 s, CoreWebView2NavigationCompletedEventArgs e) => done.TrySetResult(e.IsSuccess);
+        core.NavigationCompleted += Completed;
+        try
+        {
+            start();
+            var first = await Task.WhenAny(done.Task, Task.Delay(timeout));
+            if (first != done.Task) return $"still loading after {timeout.TotalSeconds:0} s: {core.Source}";
+            return (done.Task.Result ? "loaded " : "failed to load ") + core.Source;
+        }
+        finally { core.NavigationCompleted -= Completed; }
+    }
+
+    /// <summary>Console messages and page errors since capture started (the first call starts it; the last 200 are kept).</summary>
+    internal async Task<(bool Started, List<string> Lines)> ConsoleAsync()
+    {
+        var core = await ReadyAsync();
+        if (consoleOn) return (false, [.. console]);
+        consoleOn = true;
+        core.GetDevToolsProtocolEventReceiver("Runtime.consoleAPICalled").DevToolsProtocolEventReceived += (_, e) =>
+        {
+            using var doc = JsonDocument.Parse(e.ParameterObjectAsJson);
+            var p = doc.RootElement;
+            var parts = p.GetProperty("args").EnumerateArray().Select(a =>
+                a.TryGetProperty("value", out var v) ? (v.ValueKind == JsonValueKind.String ? v.GetString() : v.GetRawText())
+                : a.TryGetProperty("description", out var d) ? d.GetString() : a.GetProperty("type").GetString());
+            AddConsole($"[{p.GetProperty("type").GetString()}] {string.Join(' ', parts)}");
+        };
+        core.GetDevToolsProtocolEventReceiver("Runtime.exceptionThrown").DevToolsProtocolEventReceived += (_, e) =>
+        {
+            using var doc = JsonDocument.Parse(e.ParameterObjectAsJson);
+            var x = doc.RootElement.GetProperty("exceptionDetails");
+            AddConsole("[exception] " + (x.TryGetProperty("exception", out var ex) && ex.TryGetProperty("description", out var d) ? d.GetString() : x.GetProperty("text").GetString()));
+        };
+        (await CdpAsync("Runtime.enable")).Dispose();
+        return (true, [.. console]);
+    }
+
+    void AddConsole(string line)
+    {
+        console.Add(line.Length > 2000 ? line[..2000] + "…" : line);
+        if (console.Count > 200) console.RemoveAt(0);
+    }
+
+    /// <summary>A JSON (and JavaScript) string literal.</summary>
+    internal static string Json(string s) => "\"" + JsonEncodedText.Encode(s) + "\"";
 
     static string MockPage(string url) => $$"""
         <!doctype html><html><head><meta charset="utf-8"><style>
@@ -174,6 +288,9 @@ public sealed class BrowserHost
     public BrowserHost(Microsoft.UI.Dispatching.DispatcherQueue queue) => this.queue = queue;
 
     public int LiveCount => live.Count;
+
+    /// <summary>The browser panel shown most recently that still has a page.</summary>
+    public BrowserPanel? MostRecent => live.First?.Value;
 
     public async void Shown(BrowserPanel p)
     {

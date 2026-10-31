@@ -10,19 +10,25 @@ namespace Armux.App;
 
 public sealed partial class MainWindow
 {
-    /// <summary>A palette command: its group in Settings > Keyboard, and what it runs.</summary>
-    sealed record CommandEntry(string Id, string Group, Action Run);
+    /// <summary>A palette command: its group in Settings > Keyboard, and what it runs (false: the key was not used).</summary>
+    sealed record CommandEntry(string Id, string Group, Func<bool> Run);
 
     readonly List<CommandEntry> entries = [];
     readonly List<(string Chord, string Description, Action Run)> fixedKeys = [];
     List<Command> commands = [];
-    readonly Dictionary<Chord, Action> keymap = [];
+    readonly Dictionary<Chord, Func<bool>> keymap = [];
     Keymap keys = new(new Dictionary<string, string>());
     string group = "";
     int simulated;
 
     /// <summary>Adds a palette command with its default shortcut (ARCHITECTURE.md section 8); Settings can rebind it.</summary>
-    void Cmd(string title, string shortcut, Action run)
+    void Cmd(string title, string shortcut, Action run) => CmdIf(title, shortcut, () => { run(); return true; });
+
+    /// <summary>
+    /// A command that can decline its key: when it returns false the key goes on to the focused control
+    /// (Ctrl+V in a text box, Ctrl+Left to the shell when no pane is on the left).
+    /// </summary>
+    void CmdIf(string title, string shortcut, Func<bool> run)
     {
         entries.Add(new CommandEntry(title, group, run));
         keys.AddDefault(title, Keymap.Normalize(shortcut));
@@ -38,11 +44,11 @@ public sealed partial class MainWindow
         foreach (var e in entries) fresh.AddDefault(e.Id, keys.Default(e.Id));
         keys = fresh;
         keymap.Clear();
-        foreach (var (chord, _, run) in fixedKeys) keymap[Chord.Parse(chord)] = run;
+        foreach (var (chord, _, run) in fixedKeys) keymap[Chord.Parse(chord)] = () => { run(); return true; };
         // Rebindable commands win over fixed keys on the same chord.
         foreach (var e in entries)
             if (keys.Effective(e.Id) is { Length: > 0 } c) keymap[Chord.Parse(c)] = e.Run;
-        commands = [.. entries.Select(e => new Command(e.Id, e.Id, Chord.Display(keys.Effective(e.Id)), e.Run))];
+        commands = [.. entries.Select(e => new Command(e.Id, e.Id, Chord.Display(keys.Effective(e.Id)), () => e.Run()))];
     }
 
     Workspace? Ws => state.Current;
@@ -52,8 +58,10 @@ public sealed partial class MainWindow
     {
         group = "Workspaces";
         Cmd("New Workspace", "Ctrl+Shift+N", NewWorkspace);
-        Cmd("Next Workspace", "Ctrl+PageDown", () => CycleWorkspace(1));
+        // Ctrl+Shift+Tab moves between workspaces, Ctrl+Tab between the tabs inside one (requested).
+        Cmd("Next Workspace", "Ctrl+Shift+Tab", () => CycleWorkspace(1));
         Cmd("Previous Workspace", "Ctrl+PageUp", () => CycleWorkspace(-1));
+        Key("Ctrl+PageDown", () => CycleWorkspace(1), "Next workspace");
         Key("Alt+Shift+]", () => CycleWorkspace(1), "Next workspace (cmux mapping)");
         Key("Alt+Shift+[", () => CycleWorkspace(-1), "Previous workspace (cmux mapping)");
         Cmd("Close Workspace", "Ctrl+Alt+Shift+W", () => { if (Ws is { } w) CloseWorkspace(w); });
@@ -83,7 +91,7 @@ public sealed partial class MainWindow
         Cmd("New Command Prompt Tab", "", () => { if (Focused is { } p) { var s = LiveTerminal("cmd"); p.Surfaces.Add(s); SelectSurface(p, s); } });
         Cmd("Close Tab", "Ctrl+Shift+W", () => { if (Focused is { Selected: { } s } p) CloseSurface(p, s); });
         Cmd("Next Tab", "Ctrl+Tab", () => CycleSurface(1));
-        Cmd("Previous Tab", "Ctrl+Shift+Tab", () => CycleSurface(-1));
+        Cmd("Previous Tab", "", () => CycleSurface(-1));
         for (int i = 1; i <= 8; i++) { int n = i; Key($"Alt+{n}", () => JumpSurface(n - 1), $"Go to tab {n} in the pane"); }
         Key("Alt+9", () => JumpSurface(int.MaxValue), "Go to the last tab in the pane");
 
@@ -92,10 +100,13 @@ public sealed partial class MainWindow
         Cmd("Split Down", "Ctrl+Alt+Shift+D", () => { if (Focused is { } p) SplitPane(p, SplitDirection.Down); });
         Cmd("Focus Next Pane", "F6", () => CyclePane(1));
         Cmd("Focus Previous Pane", "Shift+F6", () => CyclePane(-1));
-        Cmd("Focus Pane Left", "Ctrl+Alt+Left", () => FocusDir(Direction.Left));
-        Cmd("Focus Pane Right", "Ctrl+Alt+Right", () => FocusDir(Direction.Right));
-        Cmd("Focus Pane Up", "Ctrl+Alt+Up", () => FocusDir(Direction.Up));
-        Cmd("Focus Pane Down", "Ctrl+Alt+Down", () => FocusDir(Direction.Down));
+        // Ctrl+arrows (requested): with no pane that way the key goes on, so the shell still moves by word.
+        CmdIf("Focus Pane Left", "Ctrl+Left", () => FocusDir(Direction.Left));
+        CmdIf("Focus Pane Right", "Ctrl+Right", () => FocusDir(Direction.Right));
+        CmdIf("Focus Pane Up", "Ctrl+Up", () => FocusDir(Direction.Up));
+        CmdIf("Focus Pane Down", "Ctrl+Down", () => FocusDir(Direction.Down));
+        foreach (var (name, d) in new[] { ("Left", Direction.Left), ("Right", Direction.Right), ("Up", Direction.Up), ("Down", Direction.Down) })
+            Key($"Ctrl+Alt+{name}", () => FocusDir(d), $"Focus pane {name.ToLowerInvariant()}");
         Cmd("Resize Pane Left", "Alt+Shift+Left", () => ResizeDir(Direction.Left));
         Cmd("Resize Pane Right", "Alt+Shift+Right", () => ResizeDir(Direction.Right));
         Cmd("Resize Pane Up", "Alt+Shift+Up", () => ResizeDir(Direction.Up));
@@ -131,7 +142,14 @@ public sealed partial class MainWindow
             ViewOf(Focused).Refresh();
         });
         Cmd("Copy", "Ctrl+Shift+C", () => FocusedTerminal()?.Copy());
-        Cmd("Paste", "Ctrl+Shift+V", () => { if (FocusedTerminal() is { } t) _ = t.PasteAsync(); });
+        // Ctrl+V pastes in a terminal (requested, as in Windows Terminal); in text boxes it stays their own paste.
+        CmdIf("Paste", "Ctrl+V", () =>
+        {
+            if (FocusManager.GetFocusedElement(root.XamlRoot) is not TerminalView t) return false;
+            _ = t.PasteAsync();
+            return true;
+        });
+        Key("Ctrl+Shift+V", () => { if (FocusedTerminal() is { } t) _ = t.PasteAsync(); }, "Paste");
         Cmd("Increase Terminal Font Size", "Ctrl+Shift+=", () => ChangeFontSize(1));
         Cmd("Decrease Terminal Font Size", "Ctrl+Shift+-", () => ChangeFontSize(-1));
         Cmd("Reset Terminal Font Size", "Ctrl+Shift+0", () => ChangeFontSize(0));
@@ -248,9 +266,7 @@ public sealed partial class MainWindow
             bp.FocusAddress();
             return;
         }
-        if (!keymap.TryGetValue(chord, out var run)) return;
-        e.Handled = true;
-        run();
+        if (keymap.TryGetValue(chord, out var run) && run()) e.Handled = true;
     }
 
     // ---- actions -------------------------------------------------------------------------------
@@ -267,11 +283,15 @@ public sealed partial class MainWindow
         if (index >= 0 && index < state.Workspaces.Count) SelectWorkspace(state.Workspaces[index]);
     }
 
+    /// <summary>Ctrl+Tab: the next tab in the workspace, pane by pane in layout order, so single-tab panes take turns too.</summary>
     void CycleSurface(int delta)
     {
-        if (Focused is not { Selected: { } s } p || p.Surfaces.Count < 2) return;
-        int i = (p.Surfaces.IndexOf(s) + delta + p.Surfaces.Count) % p.Surfaces.Count;
-        SelectSurface(p, p.Surfaces[i]);
+        if (Ws is not { } w || Focused is not { Selected: { } cur }) return;
+        var tabs = (w.Zoomed is { } z ? [z] : w.Panes.ToList()).SelectMany(p => p.Surfaces.Select(s => (Pane: p, Surface: s))).ToList();
+        if (tabs.Count < 2) return;
+        int i = tabs.FindIndex(t => ReferenceEquals(t.Surface, cur));
+        var next = tabs[(i + delta + tabs.Count) % tabs.Count];
+        SelectSurface(next.Pane, next.Surface);
     }
 
     void JumpSurface(int index)
@@ -289,10 +309,14 @@ public sealed partial class MainWindow
         FocusPane(panes[(panes.IndexOf(p) + delta + panes.Count) % panes.Count]);
     }
 
-    void FocusDir(Direction d)
+    /// <summary>Focuses the pane in direction <paramref name="d"/>; false (focus unchanged) when there is none or a text box has the keyboard.</summary>
+    bool FocusDir(Direction d)
     {
-        if (Ws is not { } w || w.Zoomed is not null || Focused is not { } p) return;
-        if (Layout.Neighbor(w.Root, p, d) is { } n) FocusPane(n);
+        if (Ws is not { } w || w.Zoomed is not null || Focused is not { } p) return false;
+        if (FocusManager.GetFocusedElement(root.XamlRoot) is Microsoft.UI.Xaml.Controls.TextBox) return false;
+        if (Layout.Neighbor(w.Root, p, d) is not { } n) return false;
+        FocusPane(n);
+        return true;
     }
 
     void ResizeDir(Direction d)

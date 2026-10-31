@@ -1,8 +1,8 @@
 <Project>
   <!-- One version for the app, the CLI and the core. The SDK appends the git commit
-       (InformationalVersion "0.4.0+<sha>"), which Settings > About shows. -->
+       (InformationalVersion "0.4.1+<sha>"), which Settings > About shows. -->
   <PropertyGroup>
-    <Version>0.4.0</Version>
+    <Version>0.4.1</Version>
     <Product>armux</Product>
     <Company>The armux contributors</Company>
     <Copyright>Copyright (c) The armux contributors. MIT License.</Copyright>

@@ -23,6 +23,7 @@ A terminal workspace app for **Windows 11 on ARM64**, modeled on [cmux](https://
 | PowerShell 7 (or Windows PowerShell) and cmd through ConPTY, with 24-bit color, scrollback, selection, copy and paste | Done |
 | OSC 9 / 99 / 777 notifications: pane ring, tab dot, workspace badge, notification panel, Windows toast when armux is in the background | Done |
 | `armux` CLI: `notify`, `send`, `open`, `list`, `ping` over a per-user named pipe | Done |
+| `armux mcp`: Claude Code reads and drives the built-in browser (snapshot, click, fill, type, keys, JavaScript, screenshot, console); off until turned on in Settings › Browser | Done |
 | Vertical sidebar: workspace title, live status with a dot (working, waiting for you, idle, latest notification), git branch · directory (follows `cd`), ports, PR, unread badge | Done |
 | Orange light when an agent waits for an answer or a permission: pane ring, tab dot and sidebar status, until you type in that terminal | Done |
 | Workspaces, splits and tabs reopen on the next start, each terminal in its last folder (can be turned off) | Done |
@@ -31,7 +32,7 @@ A terminal workspace app for **Windows 11 on ARM64**, modeled on [cmux](https://
 | Built-in browser (WebView2): address bar with search, back, forward, reload; lazy, suspended when hidden, at most 2 live, released when closed | Done |
 | File explorer beside the sidebar (`Ctrl+Shift+E`), modeled on Warp's file tree; browses any folder or drive, and dragging an entry onto a terminal types its relative path | Done (hidden by default) |
 | Command palette (`Ctrl+Shift+P`) with inline shortcuts and workspace switching | Done |
-| Keyboard switching: `Ctrl+1`–`9` and `Ctrl+PageUp`/`PageDown` for workspaces, `F6` and `Ctrl+Alt+arrows` for panes; Windows Terminal's defaults too (`Ctrl+,`, `Ctrl+Insert`/`Shift+Insert`, `Ctrl+Shift+arrows` to scroll, `Alt+Shift+=`/`-`/`D` to split, `F11`) | Done |
+| Keyboard switching: `Ctrl+Tab` through the tabs of a workspace, `Ctrl+Shift+Tab`, `Ctrl+1`–`9` and `Ctrl+PageUp`/`PageDown` for workspaces, `Ctrl+arrows` and `F6` for panes, `Ctrl+V` to paste; Windows Terminal's defaults too (`Ctrl+,`, `Ctrl+Insert`/`Shift+Insert`, `Ctrl+Shift+arrows` to scroll, `Alt+Shift+=`/`-`/`D` to split, `F11`) | Done |
 | Zed's fonts bundled: Lilex in terminals, IBM Plex Sans in the interface; shell, start directory, fonts and size in Settings (`Ctrl+,`); `Ctrl+=` / `Ctrl+-` / `Ctrl+0` and Ctrl+wheel zoom the whole window, `Ctrl+Shift+=` / `-` / `0` the terminal text | Done |
 | Taskbar status of the current workspace while you're tabbed out: accent bar while Claude Code (or any OSC 9;4 program) works, yellow when it needs you, red on error | Done |
 | Prompt editor (`Ctrl+G`): a normal text box under the terminal for writing long prompts, sent in one paste (Enter sends, Shift+Enter new line, Ctrl+Enter pastes without Enter) | Done |
@@ -52,6 +53,16 @@ armux open http://localhost:3000                  # browser split beside this te
 armux send --surface 2 "npm test\n"               # type into another tab
 armux list                                        # workspaces and tabs with their ids
 ```
+
+### Browser tools for Claude Code
+
+Turn on Settings › Browser › Let agents control the browser, then register the MCP server once:
+
+```powershell
+claude mcp add armux -s user -- "C:\path\to\armux\armux.com" mcp
+```
+
+Claude Code started in an armux terminal then has `browser_tabs`, `browser_open`, `browser_navigate`, `browser_history`, `browser_snapshot`, `browser_text`, `browser_click`, `browser_fill`, `browser_type`, `browser_press_key`, `browser_scroll`, `browser_evaluate`, `browser_screenshot` and `browser_console`. They work on armux's own browser tabs, in the window Claude Code runs in, and send input to the page only.
 
 Programs can also notify without the CLI by printing OSC 9 (`ESC ] 9 ; text BEL`), OSC 777 (`ESC ] 777 ; notify ; title ; body BEL`) or OSC 99 (kitty).
 

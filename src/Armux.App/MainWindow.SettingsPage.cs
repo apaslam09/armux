@@ -635,6 +635,9 @@ public sealed partial class MainWindow
         home.LostFocus += (_, _) => ChangeSettings(x => x with { BrowserHome = home.Text });
         home.KeyDown += (_, e) => { if (e.Key == VirtualKey.Enter) ChangeSettings(x => x with { BrowserHome = home.Text }); };
         body.Children.Add(Card("New tab page", "The page a new browser tab opens.", home));
+        body.Children.Add(GroupHeader("Coding agents"));
+        body.Children.Add(Card("Let agents control the browser", "Claude Code, through armux mcp, can read pages, click, type and run JavaScript in browser tabs, including sites you are signed in to. Only programs running as you can reach it.",
+            Switch(s.BrowserControl, on => ChangeSettings(x => x with { BrowserControl = on }))));
         body.Children.Add(GroupHeader("Memory"));
         body.Children.Add(Card("Live browser tabs", "At most two browser tabs keep a page loaded; others reload when you show them. Hidden tabs are suspended after a second.", null));
     }

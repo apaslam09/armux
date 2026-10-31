@@ -96,6 +96,12 @@ public sealed partial class MainWindow : Window, IPaneHost, IExplorerHost
         // to fill the window, so everything grows together. WinUI has no layout-affecting scale transform.
         zoomHost.Child = root;
         zoomHost.SizeChanged += (_, e) => ApplyZoom(e.NewSize);
+        // Growing the window could leave terminals half blank until a workspace switch; refit them once it settles.
+        var refit = new DebounceTimer(DispatcherQueue, TimeSpan.FromMilliseconds(250), () =>
+        {
+            foreach (var t in panels.Values.OfType<TerminalView>()) t.Refit();
+        });
+        SizeChanged += (_, _) => refit.Restart();
         Content = zoomHost;
         SetTitleBar(dragRegion);
 

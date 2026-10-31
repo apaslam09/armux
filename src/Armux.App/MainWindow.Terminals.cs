@@ -159,8 +159,11 @@ public sealed partial class MainWindow
         Activate();
     }
 
-    /// <summary>The control API behind the <c>armux</c> CLI (runs on the UI thread).</summary>
-    Response HandleRequest(Request r)
+    /// <summary>The control API behind the <c>armux</c> CLI and <c>armux mcp</c> (runs on the UI thread).</summary>
+    Task<Response> HandleRequest(Request r) =>
+        r.Command.StartsWith("browser-", StringComparison.Ordinal) ? HandleBrowserAsync(r) : Task.FromResult(HandleCommand(r));
+
+    Response HandleCommand(Request r)
     {
         switch (r.Command)
         {
@@ -178,9 +181,14 @@ public sealed partial class MainWindow
             case "open":
                 if (Target(r) is not { } from || Locate(from) is not { } at) return new Response { Error = $"no surface {r.Surface}" };
                 if (BrowserPanel.AddressOrSearch(r.Body) is not { } address) return new Response { Error = "give a URL" };
-                Layout.Split(at.Ws, at.Pane, SplitDirection.Right, new Surface { Kind = PanelKind.Browser, Title = address, Url = address });
+                var tab = new Surface { Kind = PanelKind.Browser, Title = address, Url = address };
+                var typing = at.Ws.Focused;
+                Layout.Split(at.Ws, at.Pane, SplitDirection.Right, tab);
+                // The page opens beside the terminal; the keyboard stays where the user (or Claude Code's prompt) was.
+                if (typing is not null) at.Ws.Focused = typing;
                 if (ReferenceEquals(at.Ws, state.Current)) RenderContent();
-                return new Response { Ok = true };
+                // The new tab's id, for `armux mcp` (and scripts) to address it.
+                return new Response { Ok = true, Output = tab.Id.ToString() };
             case "list":
                 var sb = new System.Text.StringBuilder();
                 foreach (var w in state.Workspaces)

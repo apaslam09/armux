@@ -74,6 +74,8 @@ public sealed record Settings
     public string SearchEngine { get; set; } = "google";
     /// <summary>Page a new browser tab opens; empty means a blank tab with the address bar focused.</summary>
     public string BrowserHome { get; set; } = "";
+    /// <summary>Lets the <c>armux mcp</c> server (Claude Code) read and drive browser tabs: page text, clicks, typing, JavaScript.</summary>
+    public bool BrowserControl { get; set; }
 
     // ---- Keyboard
     /// <summary>Shortcut overrides by command id. An empty value removes the shortcut. Missing ids use the defaults.</summary>

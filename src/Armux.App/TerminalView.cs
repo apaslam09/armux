@@ -126,6 +126,18 @@ public sealed partial class TerminalView : UserControl
         Render(force: true);
     }
 
+    /// <summary>
+    /// After the window settles at a new size: what a workspace switch did when a grown window left the terminal
+    /// half blank. Re-measures and redraws every row, and toggles focus for programs that report it (Claude Code
+    /// redraws on focus) in case they missed the resize.
+    /// </summary>
+    public void Refit()
+    {
+        if (!session.Started || !IsLoaded) return;
+        ApplySize();
+        if (session.Terminal.FocusReporting) session.Send(hasFocus ? "\u001b[O\u001b[I" : "\u001b[I\u001b[O");
+    }
+
     int ScrollbackCount() { lock (session.Terminal.Sync) return session.Terminal.ScrollbackCount; }
 
     // ---- rendering ---------------------------------------------------------------------------
