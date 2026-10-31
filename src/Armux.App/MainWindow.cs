@@ -33,7 +33,7 @@ public sealed partial class MainWindow : Window, IPaneHost, IExplorerHost
     StackPanel titleButtons = new();
     FontIcon titleIcon = new();
     Grid? bellIcon;
-    StackPanel? titlePanel;
+    Grid? titlePanel;
     readonly Border bellBadge = new();
     readonly TextBlock bellCount = new();
     readonly CommandPalette palette = new();
@@ -61,6 +61,43 @@ public sealed partial class MainWindow : Window, IPaneHost, IExplorerHost
         if (size.Width <= 0 || size.Height <= 0) return;
         root.Width = size.Width / k;
         root.Height = size.Height / k;
+        UpdateMinSize();
+    }
+
+    /// <summary>Title space kept beside the title bar's buttons: folder icon plus a few characters of the title.</summary>
+    const double MinTitleWidth = 140;
+    /// <summary>Title bar, a pane's tab bar and a few terminal rows.</summary>
+    const double MinContentHeight = 220;
+
+    /// <summary>Keeps the title clear of the caption buttons, in the zoomed layout's units.</summary>
+    void UpdateTitleMargin()
+    {
+        if (titlePanel is null) return;
+        double scale = root.XamlRoot?.RasterizationScale ?? 1;
+        double caption = AppWindow.TitleBar.RightInset > 0 ? AppWindow.TitleBar.RightInset / scale : 138;
+        var m = new Thickness(14, 0, caption / Theme.Settings.Zoom + 8, 0);
+        if (titlePanel.Margin != m) titlePanel.Margin = m;
+    }
+
+    /// <summary>
+    /// The smallest the window may be dragged: the title bar's buttons and some of the title stay clear of the
+    /// minimize, maximize and close buttons. It follows the sidebar (its width sets the buttons' column), zoom and DPI.
+    /// </summary>
+    void UpdateMinSize()
+    {
+        if (AppWindow.Presenter is not OverlappedPresenter presenter || root.XamlRoot is not { } xr) return;
+        double scale = xr.RasterizationScale, k = Theme.Settings.Zoom;
+        // RightInset is the caption buttons' width in physical pixels; 0 before the title bar is set up.
+        double caption = AppWindow.TitleBar.RightInset > 0 ? AppWindow.TitleBar.RightInset : 138 * scale;
+        int w = (int)Math.Ceiling((titleLeft.Width.Value + MinTitleWidth) * k * scale + caption);
+        int h = (int)Math.Ceiling(MinContentHeight * k * scale);
+        UpdateTitleMargin();
+        if (presenter.PreferredMinimumWidth != w) presenter.PreferredMinimumWidth = w;
+        if (presenter.PreferredMinimumHeight != h) presenter.PreferredMinimumHeight = h;
+        // Zooming in or showing the sidebar can raise the minimum above the current size.
+        var now = AppWindow.Size;
+        if (presenter.State == OverlappedPresenterState.Restored && (now.Width < w || now.Height < h))
+            AppWindow.Resize(new Windows.Graphics.SizeInt32(Math.Max(now.Width, w), Math.Max(now.Height, h)));
     }
 
     /// <summary>Ctrl+= / Ctrl+- / Ctrl+0 and Ctrl+wheel: scale the whole window by 10% steps.</summary>
@@ -224,10 +261,17 @@ public sealed partial class MainWindow : Window, IPaneHost, IExplorerHost
 
         dragRegion.Children.Clear();
         dragRegion.Background = new SolidColorBrush(Colors.Transparent);
-        var title = titlePanel = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 8, VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(14, 0, 0, 0) };
+        // A grid, not a stack panel, so a long title is trimmed instead of measured at full length.
+        var title = titlePanel = new Grid { ColumnSpacing = 8, VerticalAlignment = VerticalAlignment.Center };
+        title.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+        title.ColumnDefinitions.Add(new ColumnDefinition());
         titleIcon = Ui.Glyph(Ui.Folder, 13, Theme.Brush("Link"));
         title.Children.Add(titleIcon);
+        Grid.SetColumn(titleText, 1);
         titleText.FontSize = 13;
+        // A long workspace name ends in "…" before the caption buttons instead of running under them.
+        titleText.TextTrimming = TextTrimming.CharacterEllipsis;
+        UpdateTitleMargin();
         titleText.FontFamily = new FontFamily(Theme.UiFontSemibold);
         titleText.FontWeight = Microsoft.UI.Text.FontWeights.SemiBold;
         titleText.Foreground = Theme.Brush("Text");
@@ -256,6 +300,7 @@ public sealed partial class MainWindow : Window, IPaneHost, IExplorerHost
         titleText.Text = settings ? "Settings" : ws is null ? "armux" : ws.Zoomed is null ? ws.Title : $"{ws.Title}  ·  zoomed";
         Title = settings ? "Settings - armux" : ws is null ? "armux" : $"{ws.Title} - armux";
         titleLeft.Width = new GridLength(settings ? 0 : sidebarVisible ? SidebarWidth : 180);
+        UpdateMinSize();
     }
 
     void UpdateBell()
