@@ -53,6 +53,8 @@ public sealed partial class MainWindow
         Grid.SetRow(settingsPage, 1);
         Canvas.SetZIndex(settingsPage, 50);
         root.Children.Add(settingsPage);
+        // Off the terminal: covered by the page, it would still get every key typed here.
+        settingsScroll!.Loaded += (s, _) => { if (ReferenceEquals(s, settingsScroll)) settingsScroll.Focus(FocusState.Programmatic); };
         UpdateTitle();
         if (offset > 0) DispatcherQueue.TryEnqueue(Microsoft.UI.Dispatching.DispatcherQueuePriority.Low, () => settingsScroll?.ChangeView(null, offset, null, true));
     }
@@ -69,6 +71,7 @@ public sealed partial class MainWindow
         recordingShortcut = null;
         UpdateTitle();
         FocusKeys();
+        Ui.FreeSoon(DispatcherQueue);
     }
 
     /// <summary>Esc on the page: clear the search first, then close.</summary>
@@ -116,7 +119,8 @@ public sealed partial class MainWindow
         page.Children.Add(nav);
 
         var right = new Grid();
-        settingsScroll = new ScrollViewer { VerticalScrollBarVisibility = ScrollBarVisibility.Auto };
+        // A tab stop, so the page itself can hold the keyboard while no control in it has it (Up and Down then scroll).
+        settingsScroll = new ScrollViewer { VerticalScrollBarVisibility = ScrollBarVisibility.Auto, IsTabStop = true, UseSystemFocusVisuals = false };
         right.Children.Add(settingsScroll);
         var close = Ui.IconButton(Ui.Glyph(Ui.Close, 11, Theme.Brush("TextDim")), "Close settings (Esc)", CloseSettingsPage, 30);
         close.HorizontalAlignment = HorizontalAlignment.Right;
@@ -147,6 +151,7 @@ public sealed partial class MainWindow
 
         settingsNav?.Children.Clear();
         foreach (var name in SettingsSections) settingsNav?.Children.Add(NavItem(name, q.Length == 0 && name == settingsSection));
+        Ui.FreeSoon(DispatcherQueue);
     }
 
     void BuildSection(string section, StackPanel body)
@@ -312,20 +317,22 @@ public sealed partial class MainWindow
         var b = SettingsButton(content, null);
         b.MinWidth = 190;
         b.HorizontalContentAlignment = HorizontalAlignment.Stretch;
-        var menu = new MenuFlyout { Placement = FlyoutPlacementMode.BottomEdgeAlignedLeft, ShouldConstrainToRootBounds = true, MenuFlyoutPresenterStyle = Ui.SolidPresenter(typeof(MenuFlyoutPresenter)) };
-        for (int i = 0; i < labels.Length; i++)
+        b.Click += (_, _) =>
         {
-            int n = i;
-            var item = new ToggleMenuFlyoutItem { Text = labels[i], IsChecked = i == selected };
-            item.Click += (_, _) =>
+            var menu = new ArmuxMenu(b);
+            for (int i = 0; i < labels.Length; i++)
             {
-                for (int k = 0; k < menu.Items.Count; k++) ((ToggleMenuFlyoutItem)menu.Items[k]).IsChecked = k == n;
-                text.Text = labels[n];
-                changed(n);
-            };
-            menu.Items.Add(item);
-        }
-        b.Flyout = menu;
+                int n = i;
+                menu.Item(labels[i], () =>
+                {
+                    selected = n;
+                    text.Text = labels[n];
+                    changed(n);
+                }, check: i == selected);
+            }
+            // The card's padding and border are on top of this width.
+            menu.Show(minWidth: b.ActualWidth - 10);
+        };
         return b;
     }
 

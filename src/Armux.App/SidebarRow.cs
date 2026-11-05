@@ -26,7 +26,7 @@ public sealed partial class SidebarRow : Grid
     readonly TextBlock title, status, location, pr;
     bool hover;
 
-    public SidebarRow(Workspace ws, AppState state, Action<Workspace> select, Action<Workspace, FrameworkElement> menu)
+    public SidebarRow(Workspace ws, AppState state, Action<Workspace> select, Action<Workspace, FrameworkElement, Windows.Foundation.Point?> menu)
     {
         this.ws = ws;
         this.state = state;
@@ -70,7 +70,7 @@ public sealed partial class SidebarRow : Grid
         PointerEntered += (_, _) => { hover = true; Update(); };
         PointerExited += (_, _) => { hover = false; Update(); };
         Tapped += (_, _) => select(ws);
-        RightTapped += (_, e) => { menu(ws, this); e.Handled = true; };
+        RightTapped += (_, e) => { menu(ws, this, e.GetPosition(this)); e.Handled = true; };
 
         ws.PropertyChanged += OnChanged;
         state.PropertyChanged += OnChanged;

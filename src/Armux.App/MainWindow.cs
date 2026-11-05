@@ -43,7 +43,7 @@ public sealed partial class MainWindow : Window, IPaneHost, IExplorerHost
     /// </summary>
     readonly ContentControl keySink = new() { IsTabStop = true, UseSystemFocusVisuals = false, Width = 0, Height = 0 };
     Button bellButton = null!;
-    Flyout bellFlyout = null!;
+    ArmuxPopup? notifications;
     readonly Dictionary<Pane, PaneView> paneViews = [];
     readonly Dictionary<Surface, FrameworkElement> panels = [];
     bool sidebarVisible = true;
@@ -263,9 +263,7 @@ public sealed partial class MainWindow : Window, IPaneHost, IExplorerHost
         bellCount.HorizontalAlignment = HorizontalAlignment.Center;
         bellCount.VerticalAlignment = VerticalAlignment.Center;
         bell.Children.Add(bellBadge);
-        bellButton = Ui.IconButton(bell, "Notifications (Ctrl+Shift+I)", () => bellFlyout.ShowAt(bellButton));
-        bellFlyout = new Flyout { Placement = Microsoft.UI.Xaml.Controls.Primitives.FlyoutPlacementMode.BottomEdgeAlignedLeft, ShouldConstrainToRootBounds = true, FlyoutPresenterStyle = Ui.SolidPresenter(typeof(FlyoutPresenter)) };
-        bellFlyout.Opening += (_, _) => bellFlyout.Content = NotificationsList();
+        bellButton = Ui.IconButton(bell, "Notifications (Ctrl+Shift+I)", ShowNotifications);
         left.Children.Add(bellButton);
         left.Children.Add(Ui.IconButton(Ui.Glyph(Ui.Add, 13, dim), "New workspace (Ctrl+Shift+N)", NewWorkspace));
         left.Children.Add(Ui.IconButton(Ui.Glyph(Ui.Gear, 13, dim), "Settings (Ctrl+,)", ToggleSettingsPage));
@@ -429,7 +427,7 @@ public sealed partial class MainWindow : Window, IPaneHost, IExplorerHost
     void FocusKeys() => DispatcherQueue.TryEnqueue(() =>
     {
         // A dialog, menu or flyout that is open keeps the keyboard, and so does the Settings page.
-        if (palette.IsOpen || settingsPage is not null || root.XamlRoot is null || VisualTreeHelper.GetOpenPopupsForXamlRoot(root.XamlRoot).Count > 0) return;
+        if (palette.IsOpen || settingsPage is not null || root.XamlRoot is null || Ui.PopupOpen(root.XamlRoot)) return;
         if (FocusedTerminal() is { } t) t.Focus(FocusState.Programmatic);
         else if (Focused?.Selected is { } s && panels.TryGetValue(s, out var p) && p is FileView { Editable: true } editor) editor.FocusEditor();
         else keySink.Focus(FocusState.Programmatic);
@@ -437,20 +435,20 @@ public sealed partial class MainWindow : Window, IPaneHost, IExplorerHost
 
     /// <summary>
     /// When nothing in the window has the keyboard (the focused control was removed, or a click landed on something
-    /// that takes no focus), give it back: to the terminal, or to the key sink over the Settings page.
+    /// that takes no focus), give it back: to the terminal, or to the page while Settings is open.
     /// </summary>
     void RescueFocusSoon() => DispatcherQueue.TryEnqueue(Microsoft.UI.Dispatching.DispatcherQueuePriority.Low, () =>
     {
         if (!IsActiveWindow || palette.IsOpen || root.XamlRoot is not { } xamlRoot || Microsoft.UI.Xaml.Input.FocusManager.GetFocusedElement(xamlRoot) is not null) return;
-        if (VisualTreeHelper.GetOpenPopupsForXamlRoot(xamlRoot).Count > 0) return;
-        if (settingsPage is not null) keySink.Focus(FocusState.Programmatic);
+        if (Ui.PopupOpen(xamlRoot)) return;
+        if (settingsPage is not null) settingsScroll?.Focus(FocusState.Programmatic);
         else FocusKeys();
     });
 
     /// <summary>After a click or tab switch: focus the terminal, but leave focus alone for browser and file tabs.</summary>
     void FocusTerminal() => DispatcherQueue.TryEnqueue(() =>
     {
-        if (palette.IsOpen || settingsPage is not null || root.XamlRoot is null || VisualTreeHelper.GetOpenPopupsForXamlRoot(root.XamlRoot).Count > 0) return;
+        if (palette.IsOpen || settingsPage is not null || root.XamlRoot is null || Ui.PopupOpen(root.XamlRoot)) return;
         FocusedTerminal()?.Focus(FocusState.Programmatic);
     });
 
@@ -578,29 +576,22 @@ public sealed partial class MainWindow : Window, IPaneHost, IExplorerHost
         UpdateTitle();
     }
 
-    void ShowWorkspaceMenu(Workspace ws, FrameworkElement anchor)
+    void ShowWorkspaceMenu(Workspace ws, FrameworkElement anchor, Windows.Foundation.Point? at)
     {
-        var menu = new MenuFlyout { ShouldConstrainToRootBounds = true, MenuFlyoutPresenterStyle = Ui.SolidPresenter(typeof(MenuFlyoutPresenter)) };
-        void Add(MenuFlyoutItemBase item) => menu.Items.Add(item);
-        MenuFlyoutItem Item(string text, Action run) { var i = new MenuFlyoutItem { Text = text }; i.Click += (_, _) => run(); return i; }
-
-        Add(Item("Rename…", () => _ = RenameAsync(ws)));
-        Add(Item(ws.Pinned ? "Unpin" : "Pin to top", () => { ws.Pinned = !ws.Pinned; state.SortPinned(); }));
-        Add(Item("Color…", () => ShowColorFlyout(ws, anchor)));
-        Add(new MenuFlyoutSeparator());
-        Add(Item("Close workspace", () => CloseWorkspace(ws)));
-        menu.ShowAt(anchor);
+        string Keys(string id) => Chord.Display(keys.Effective(id));
+        var menu = new ArmuxMenu(anchor);
+        menu.Item("Rename…", () => _ = RenameAsync(ws), hint: Keys("Rename Workspace…"));
+        menu.Item(ws.Pinned ? "Unpin" : "Pin to top", () => { ws.Pinned = !ws.Pinned; state.SortPinned(); });
+        menu.Item("Color…", () => ShowColorFlyout(ws, anchor));
+        menu.Separator();
+        menu.Item("Close workspace", () => CloseWorkspace(ws), hint: Keys("Close Workspace"));
+        menu.Show(at);
     }
 
     /// <summary>cmux tab colors: 17 presets, a custom color, or none.</summary>
     void ShowColorFlyout(Workspace ws, FrameworkElement anchor)
     {
-        var flyout = new Flyout
-        {
-            ShouldConstrainToRootBounds = true,
-            Placement = Microsoft.UI.Xaml.Controls.Primitives.FlyoutPlacementMode.RightEdgeAlignedTop,
-            FlyoutPresenterStyle = Ui.SolidPresenter(typeof(FlyoutPresenter)),
-        };
+        ArmuxPopup? flyout = null;
         var grid = new Grid { RowSpacing = 8, ColumnSpacing = 8 };
         const int perRow = 6;
         for (int c = 0; c < perRow; c++) grid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
@@ -614,25 +605,22 @@ public sealed partial class MainWindow : Window, IPaneHost, IExplorerHost
                 Stroke = ws.Color == hex ? Theme.Brush("Text") : null, StrokeThickness = 2,
             };
             ToolTipService.SetToolTip(swatch, name);
-            swatch.Tapped += (_, _) => { ws.Color = hex; flyout.Hide(); };
+            swatch.Tapped += (_, _) => { ws.Color = hex; flyout?.Hide(); };
             Grid.SetRow(swatch, i / perRow);
             Grid.SetColumn(swatch, i % perRow);
             grid.Children.Add(swatch);
         }
         var buttons = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 8, Margin = new Thickness(0, 12, 0, 0) };
-        var custom = new Button { Content = "Custom…" };
-        custom.Click += (_, _) => { flyout.Hide(); _ = CustomColorAsync(ws); };
-        var none = new Button { Content = "No color" };
-        none.Click += (_, _) => { ws.Color = null; flyout.Hide(); };
-        buttons.Children.Add(custom);
-        buttons.Children.Add(none);
+        buttons.Children.Add(SettingsButton("Custom…", () => { flyout?.Hide(); _ = CustomColorAsync(ws); }));
+        buttons.Children.Add(SettingsButton("No color", () => { ws.Color = null; flyout?.Hide(); }));
         var body = new StackPanel();
+        Ui.StyleControls(body.Resources);
         body.Children.Add(Ui.Text("Workspace color", 13, Theme.Brush("Text"), semibold: true));
         body.Children.Add(new Border { Height = 10 });
         body.Children.Add(grid);
         body.Children.Add(buttons);
-        flyout.Content = body;
-        flyout.ShowAt(anchor);
+        flyout = new ArmuxPopup(anchor, body, new Thickness(14, 12, 14, 14));
+        flyout.Show(beside: true);
     }
 
     async Task RenameAsync(Workspace ws)
@@ -658,20 +646,28 @@ public sealed partial class MainWindow : Window, IPaneHost, IExplorerHost
 
     // ---- notifications -----------------------------------------------------------------------
 
+    void ShowNotifications()
+    {
+        notifications = new ArmuxPopup(bellButton, NotificationsList(), new Thickness(8, 8, 8, 8));
+        notifications.Closed += () => notifications = null;
+        notifications.Show();
+    }
+
     UIElement NotificationsList()
     {
         var panel = new StackPanel { Width = 380, Spacing = 2 };
-        var head = new Grid { Margin = new Thickness(4, 0, 0, 8) };
+        Ui.StyleRowButtons(panel.Resources);
+        var head = new Grid { Margin = new Thickness(8, 0, 0, 6) };
         head.ColumnDefinitions.Add(new ColumnDefinition());
         head.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
-        head.Children.Add(Ui.Text("Notifications", 14, Theme.Brush("Text"), semibold: true));
-        var actions = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 4 };
-        var markAll = new HyperlinkButton { Content = "Mark all read", FontSize = 12, Padding = new Thickness(4, 0, 4, 0) };
-        markAll.Click += (_, _) => { state.MarkAllRead(); bellFlyout.Hide(); };
-        var clear = new HyperlinkButton { Content = "Clear", FontSize = 12, Padding = new Thickness(4, 0, 4, 0) };
-        clear.Click += (_, _) => { state.Clear(); bellFlyout.Hide(); };
-        actions.Children.Add(markAll);
-        actions.Children.Add(clear);
+        var heading = Ui.Text("Notifications", 13, Theme.Brush("Text"), semibold: true);
+        heading.VerticalAlignment = VerticalAlignment.Center;
+        head.Children.Add(heading);
+        var actions = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 2 };
+        actions.Children.Add(Ui.RowButton(Ui.Text("Mark all read", 12, Theme.Brush("TextDim")), () => { state.MarkAllRead(); notifications?.Hide(); }));
+        actions.Children.Add(Ui.RowButton(Ui.Text("Clear", 12, Theme.Brush("TextDim")), () => { state.Clear(); notifications?.Hide(); }));
+        Microsoft.UI.Xaml.Automation.AutomationProperties.SetName(actions.Children[0], "Mark all read");
+        Microsoft.UI.Xaml.Automation.AutomationProperties.SetName(actions.Children[1], "Clear");
         Grid.SetColumn(actions, 1);
         head.Children.Add(actions);
         panel.Children.Add(head);
@@ -695,10 +691,11 @@ public sealed partial class MainWindow : Window, IPaneHost, IExplorerHost
             row.Children.Add(text);
             row.PointerEntered += (_, _) => row.Background = Theme.Brush("SidebarHover");
             row.PointerExited += (_, _) => row.Background = null;
-            row.Tapped += (_, _) => { bellFlyout.Hide(); JumpTo(n); };
+            row.Tapped += (_, _) => { notifications?.Hide(); JumpTo(n); };
             panel.Children.Add(row);
         }
-        return new ScrollViewer { Content = panel, MaxHeight = 520 };
+        // A scroll viewer's template is the heaviest thing here, so it comes only when the list needs it.
+        return state.Notifications.Count <= 6 ? panel : new ScrollViewer { Content = panel, MaxHeight = 520 };
     }
 
     void JumpTo(Notification n)
@@ -742,9 +739,9 @@ public sealed partial class MainWindow : Window, IPaneHost, IExplorerHost
             t.Start();
         }
         if (opts.Settings) ShowSettingsPage(opts.SettingsSection ?? "General");
-        if (opts.Notifications) bellFlyout.ShowAt(bellButton);
+        if (opts.Notifications) DispatcherQueue.TryEnqueue(Microsoft.UI.Dispatching.DispatcherQueuePriority.Low, ShowNotifications);
         if (opts.Menu && sidebarList.Children.Count > 1 && sidebarList.Children[1] is SidebarRow row)
-            DispatcherQueue.TryEnqueue(Microsoft.UI.Dispatching.DispatcherQueuePriority.Low, () => ShowWorkspaceMenu(state.Workspaces[1], row));
+            DispatcherQueue.TryEnqueue(Microsoft.UI.Dispatching.DispatcherQueuePriority.Low, () => ShowWorkspaceMenu(state.Workspaces[1], row, null));
         if (opts.Colors && sidebarList.Children.Count > 1 && sidebarList.Children[1] is SidebarRow crow)
             DispatcherQueue.TryEnqueue(Microsoft.UI.Dispatching.DispatcherQueuePriority.Low, () => ShowColorFlyout(state.Workspaces[1], crow));
         if (opts.CloseAfterMs >= 0)

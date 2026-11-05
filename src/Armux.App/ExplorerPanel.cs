@@ -188,15 +188,10 @@ public sealed partial class ExplorerPanel : Grid
     /// <summary>Home folders, OneDrive and every ready drive.</summary>
     void ShowPlaces(FrameworkElement anchor)
     {
-        var menu = new MenuFlyout { ShouldConstrainToRootBounds = true, MenuFlyoutPresenterStyle = Ui.SolidPresenter(typeof(MenuFlyoutPresenter)) };
-        void Item(string text, string glyph, string? dir)
-        {
-            var item = new MenuFlyoutItem { Text = text, Icon = new FontIcon { Glyph = glyph, FontFamily = new FontFamily("Segoe Fluent Icons") } };
-            item.Click += (_, _) => host.Navigate(dir);
-            menu.Items.Add(item);
-        }
+        var menu = new ArmuxMenu(anchor);
+        void Item(string text, string glyph, string? dir) => menu.Item(text, () => host.Navigate(dir), glyph: glyph);
         Item("Terminal's folder", Ui.Terminal, null);
-        menu.Items.Add(new MenuFlyoutSeparator());
+        menu.Separator();
         var home = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
         Item("Home", Ui.Home, home);
         foreach (var (label, dir) in new[]
@@ -210,13 +205,13 @@ public sealed partial class ExplorerPanel : Grid
         foreach (var dir in new[] { "OneDriveCommercial", "OneDriveConsumer", "OneDrive" }
             .Select(Environment.GetEnvironmentVariable).OfType<string>().Where(Directory.Exists).Distinct(StringComparer.OrdinalIgnoreCase))
             Item(Path.GetFileName(dir), Ui.Folder, dir);
-        menu.Items.Add(new MenuFlyoutSeparator());
+        menu.Separator();
         foreach (var d in DriveInfo.GetDrives())
         {
             try { if (d.IsReady) Item($"{d.Name.TrimEnd('\\')}  {(d.VolumeLabel.Length > 0 ? d.VolumeLabel : d.DriveType.ToString())}", Ui.Drive, d.RootDirectory.FullName); }
             catch (Exception ex) when (ex is IOException or UnauthorizedAccessException) { }
         }
-        menu.ShowAt(anchor);
+        menu.Show();
     }
 
     static string Shorten(string p)
@@ -379,37 +374,28 @@ public sealed partial class ExplorerPanel : Grid
     void ShowMenu(FileEntry e, FrameworkElement anchor, RightTappedRoutedEventArgs args)
     {
         args.Handled = true;
-        var menu = new MenuFlyout { ShouldConstrainToRootBounds = true, MenuFlyoutPresenterStyle = Ui.SolidPresenter(typeof(MenuFlyoutPresenter)) };
-        MenuFlyoutItem Item(string text, Action run, bool enabled = true)
-        {
-            var item = new MenuFlyoutItem { Text = text, IsEnabled = enabled };
-            item.Click += (_, _) => run();
-            menu.Items.Add(item);
-            return item;
-        }
-        void Sep() => menu.Items.Add(new MenuFlyoutSeparator());
-
+        var menu = new ArmuxMenu(anchor);
         if (e.IsDirectory)
         {
-            if (!e.Path.Equals(tree.Root, StringComparison.OrdinalIgnoreCase)) Item("Browse into this folder", () => host.Navigate(e.Path));
-            Item("New file…", () => _ = NewFileAsync(e.Path));
-            Sep();
+            if (!e.Path.Equals(tree.Root, StringComparison.OrdinalIgnoreCase)) menu.Item("Browse into this folder", () => host.Navigate(e.Path));
+            menu.Item("New file…", () => _ = NewFileAsync(e.Path));
+            menu.Separator();
         }
         else
         {
-            Item("Open in new tab", () => host.OpenFile(e.Path, newPane: false));
-            Item("Open in new pane", () => host.OpenFile(e.Path, newPane: true));
-            Sep();
+            menu.Item("Open in new tab", () => host.OpenFile(e.Path, newPane: false));
+            menu.Item("Open in new pane", () => host.OpenFile(e.Path, newPane: true));
+            menu.Separator();
         }
-        Item("Copy path", () => Copy(e.Path));
-        Item("Copy relative path", () => Copy(Path.GetRelativePath(tree.Root, e.Path)));
-        Sep();
-        Item("Reveal in File Explorer", () => Reveal(e.Path));
-        if (!e.IsDirectory) Item("Open with default app", () => FileView.OpenExternally(e.Path));
-        Sep();
+        menu.Item("Copy path", () => Copy(e.Path));
+        menu.Item("Copy relative path", () => Copy(Path.GetRelativePath(tree.Root, e.Path)));
+        menu.Separator();
+        menu.Item("Reveal in File Explorer", () => Reveal(e.Path));
+        if (!e.IsDirectory) menu.Item("Open with default app", () => FileView.OpenExternally(e.Path));
+        menu.Separator();
         // Warp's "Attach as context": the path typed into the focused terminal, as a drag and drop would.
-        Item("Insert path in terminal", () => host.InsertPath(e.Path));
-        menu.ShowAt(anchor, args.GetPosition(anchor));
+        menu.Item("Insert path in terminal", () => host.InsertPath(e.Path));
+        menu.Show(args.GetPosition(anchor));
     }
 
     static void Copy(string text)

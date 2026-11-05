@@ -52,7 +52,7 @@ public sealed partial class MainWindow
             if (keys.Effective(e.Id) is { Length: > 0 } c) keymap[Chord.Parse(c)] = (e.Id, e.Run);
         commands = [.. entries.Select(e => new Command(e.Id, e.Id, Chord.Display(keys.Effective(e.Id)), () => e.Run()))];
         // Browser pages hand these chords back to armux instead of using them (Ctrl+L focuses the address bar).
-        browsers.SetKeys([.. keymap.Keys.Where(c => !c.IsTextEditing).Append(new Chord(true, false, false, "L")).Select(c => c.Code).Distinct()]);
+        browsers.SetKeys([.. keymap.Keys.Where(c => !c.IsTextEditing).Append(CtrlL).Select(c => c.Code).Distinct()]);
     }
 
     Workspace? Ws => state.Current;
@@ -126,7 +126,7 @@ public sealed partial class MainWindow
         });
 
         group = "Notifications";
-        Cmd("Show Notifications", "Ctrl+Shift+I", () => bellFlyout.ShowAt(bellButton));
+        Cmd("Show Notifications", "Ctrl+Shift+I", ShowNotifications);
         Cmd("Jump to Latest Unread", "Ctrl+Alt+Shift+U", () => { if (state.LatestUnread() is { } n) JumpTo(n); });
         Cmd("Toggle Unread", "Ctrl+Alt+U", () => { if (Ws is { } w && Focused?.Selected is { } s) state.ToggleUnread(w, s); });
         Cmd("Mark All Notifications Read", "", state.MarkAllRead);
@@ -195,7 +195,10 @@ public sealed partial class MainWindow
         Cmd("Command Palette", "Ctrl+Shift+P", OpenPalette);
 
         RebuildKeymap();
-        root.PreviewKeyDown += OnKey;
+        // The hook works wherever the keyboard is (D-41). The root's key event only hears keys typed under it: a fallback.
+        var hwnd = WinRT.Interop.WindowNative.GetWindowHandle(this);
+        if (KeyHook.Add(hwnd, OnKey)) Closed += (_, _) => KeyHook.Remove(hwnd);
+        else root.PreviewKeyDown += (_, e) => { if (OnKey(e.Key)) e.Handled = true; };
     }
 
     void OpenPalette()
@@ -247,28 +250,39 @@ public sealed partial class MainWindow
     };
 
     /// <summary>
-    /// The root's PreviewKeyDown sees every key typed anywhere in the window (terminal, explorer, text boxes) before
-    /// the focused control does, so shortcuts work wherever the keyboard is (D-41). The Settings page is the
-    /// exception: there only Esc and the Settings shortcut (Ctrl+,) act, to close it.
+    /// Every key typed in the window, before any control sees it (<see cref="KeyHook"/>), so shortcuts work wherever the
+    /// keyboard is (D-41). True when the key was used; other keys carry on to the terminal, text box or program as usual.
+    /// A dialog, menu or the palette keeps every key while open. The Settings page is the exception too: there only Esc
+    /// and the Settings shortcut (Ctrl+,) act, to close it.
     /// </summary>
-    void OnKey(object sender, KeyRoutedEventArgs e)
+    bool OnKey(VirtualKey k)
     {
-        if (palette.IsOpen || recordingShortcut is not null) return;
-        if (settingsPage is not null && e.Key == VirtualKey.Escape) { e.Handled = true; EscapeSettingsPage(); return; }
-        if (KeyName(e.Key) is not { } key) return;
-        var chord = new Chord(Down(VirtualKey.Control), Down(VirtualKey.Menu), Down(VirtualKey.Shift), key);
+        if (palette.IsOpen || recordingShortcut is not null || root.XamlRoot is not { } xamlRoot) return false;
+        if (settingsPage is not null && k == VirtualKey.Escape)
+        {
+            if (Ui.PopupOpen(xamlRoot)) return false;
+            EscapeSettingsPage();
+            return true;
+        }
+        if (KeyName(k) is not { } key) return false;
+        var chord = new Chord(KeyHook.Down(VirtualKey.Control), KeyHook.Down(VirtualKey.Menu), KeyHook.Down(VirtualKey.Shift), key);
+        // Ordinary typing stops here.
+        if (!keymap.ContainsKey(chord) && chord != CtrlL) return false;
+        if (Ui.PopupOpen(xamlRoot)) return false;
         // Caret, selection, clipboard and undo keys stay with a focused text box (settings search, address bar, editors).
-        if (chord.IsTextEditing && FocusManager.GetFocusedElement(root.XamlRoot)
-            is Microsoft.UI.Xaml.Controls.TextBox or Microsoft.UI.Xaml.Controls.PasswordBox or Microsoft.UI.Xaml.Controls.RichEditBox) return;
+        if (chord.IsTextEditing && FocusManager.GetFocusedElement(xamlRoot)
+            is Microsoft.UI.Xaml.Controls.TextBox or Microsoft.UI.Xaml.Controls.PasswordBox or Microsoft.UI.Xaml.Controls.RichEditBox) return false;
         lastChord = (chord, Environment.TickCount64);
-        if (RunChord(chord)) e.Handled = true;
+        return RunChord(chord);
     }
+
+    static readonly Chord CtrlL = new(true, false, false, "L");
 
     /// <summary>Runs the shortcut on <paramref name="chord"/>; false when there is none or it declined the key.</summary>
     bool RunChord(Chord chord)
     {
         // Ctrl+L belongs to the shell in a terminal, and focuses the address bar in a browser tab (Edge default, D-03).
-        if (settingsPage is null && chord == new Chord(true, false, false, "L") && Focused?.Selected is { Kind: PanelKind.Browser } b
+        if (settingsPage is null && chord == CtrlL && Focused?.Selected is { Kind: PanelKind.Browser } b
             && panels.TryGetValue(b, out var panel) && panel is BrowserPanel bp)
         {
             bp.FocusAddress();

@@ -103,20 +103,29 @@ public sealed partial class BrowserPanel : Grid
         core.DocumentTitleChanged += (_, _) => { if (!Surface.MockPage && core.DocumentTitle.Length > 0) Surface.Title = core.DocumentTitle; };
         // Links that open a new window load in this panel instead of a separate browser window.
         core.NewWindowRequested += (_, e) => { e.Handled = true; core.Navigate(e.Uri); };
-        // armux shortcuts typed in the page come back here (D-41); the page asks for the chord list when it loads.
-        core.WebMessageReceived += (_, e) =>
+        // armux shortcuts typed in the page or one of its frames come back here (D-41).
+        core.WebMessageReceived += (_, e) => OnPageMessage(e, core.PostWebMessageAsJson);
+        // A frame's messages arrive on the frame, not on the page. This SDK has no event for frames inside a frame.
+        core.FrameCreated += (_, e) =>
         {
-            string? json;
-            try { json = e.TryGetWebMessageAsString(); } catch (ArgumentException) { return; }
-            if (json is null || !json.StartsWith(BrowserHost.Token, StringComparison.Ordinal)) return;
-            var body = json[BrowserHost.Token.Length..];
-            if (body == "hello") host.SendKeys(core);
-            else if (Chord.FromCode(body) is { } chord) host.PageKey?.Invoke(chord);
+            var frame = e.Frame;
+            frame.WebMessageReceived += (_, m) => OnPageMessage(m, frame.PostWebMessageAsJson);
         };
         await core.AddScriptToExecuteOnDocumentCreatedAsync(BrowserHost.KeyScript);
         if (Surface.MockPage) Web.NavigateToString(MockPage(Surface.Url));
         else if (Surface.Url.Length > 0) core.Navigate(Surface.Url);
         else url.Focus(FocusState.Programmatic);
+    }
+
+    /// <summary>From <see cref="BrowserHost.KeyScript"/>: a document asking for the chord list when it loads, or a chord typed in it.</summary>
+    void OnPageMessage(CoreWebView2WebMessageReceivedEventArgs e, Action<string> post)
+    {
+        string? json;
+        try { json = e.TryGetWebMessageAsString(); } catch (ArgumentException) { return; }
+        if (json is null || !json.StartsWith(BrowserHost.Token, StringComparison.Ordinal)) return;
+        var body = json[BrowserHost.Token.Length..];
+        if (body == "hello") host.SendKeys(post);
+        else if (Chord.FromCode(body) is { } chord) host.PageKey?.Invoke(chord);
     }
 
     /// <summary>Navigates to an address, or searches with the engine from Settings when the text does not look like one.</summary>
@@ -319,23 +328,24 @@ public sealed class BrowserHost
     public void SetKeys(IEnumerable<string> codes)
     {
         keys = "[" + string.Join(",", codes.Select(BrowserPanel.Json)) + "]";
-        foreach (var p in live) if (p.Web?.CoreWebView2 is { } core) SendKeys(core);
+        foreach (var p in live) if (p.Web?.CoreWebView2 is { } core) SendKeys(core.PostWebMessageAsJson);
     }
 
-    internal void SendKeys(CoreWebView2 core)
+    internal void SendKeys(Action<string> post)
     {
-        try { core.PostWebMessageAsJson("{\"armuxKeys\":" + keys + "}"); }
+        try { post("{\"armuxKeys\":" + keys + "}"); }
         catch (Exception) { /* the page is closing or suspended; it asks again when it next loads */ }
     }
 
     /// <summary>
-    /// Added to every document before its own scripts. A capture listener on the window, registered first, sees each
-    /// key before the page does; armux's chords are stopped there and reported, every other key is left to the page.
+    /// Added to every document, frames included, before its own scripts. A capture listener on the window, registered
+    /// first, sees each key before the page does; armux's chords are stopped there and reported, every other key is
+    /// left to the page.
     /// </summary>
     internal static string KeyScript => $$"""
         (() => {
           const w = window.chrome && window.chrome.webview;
-          if (!w || window.top !== window) return;
+          if (!w) return;
           const token = {{BrowserPanel.Json(Token)}}, post = w.postMessage.bind(w);
           let keys = new Set();
           w.addEventListener('message', e => { if (e.data && Array.isArray(e.data.armuxKeys)) keys = new Set(e.data.armuxKeys); });

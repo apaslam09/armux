@@ -131,6 +131,7 @@ public sealed class ArmuxDialog
         popup.IsOpen = false;
         focusedBefore?.Focus(FocusState.Programmatic);
         done.SetResult(result);
+        Ui.FreeSoon(overlay.DispatcherQueue);
     }
 
     static TextBox? FirstTextBox(DependencyObject d)

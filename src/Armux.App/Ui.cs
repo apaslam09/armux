@@ -13,7 +13,18 @@ public static class Ui
 
     public const string Explorer = "\uEC50", FolderOpen = "\uE838", ChevronRight = "\uE76C", ChevronDown = "\uE70D",
         ChevronUp = "\uE70E", Document = "\uE8A5", Code = "\uE943", Photo = "\uE91B", Gear = "\uE713", Page = "\uE7C3",
-        Up = "\uE74A", Drive = "\uEDA2", Home = "\uE80F", Places = "\uE81D";
+        Up = "\uE74A", Drive = "\uEDA2", Home = "\uE80F", Places = "\uE81D", Check = "\uE73E";
+
+    /// <summary>
+    /// True while a dialog, menu or dropdown is open: it keeps the keyboard. A tooltip doesn't count. Hovering a button
+    /// must not block anything, or focus that was lost under a tooltip was never given back.
+    /// </summary>
+    public static bool PopupOpen(XamlRoot root)
+    {
+        foreach (var p in VisualTreeHelper.GetOpenPopupsForXamlRoot(root))
+            if (p.Child is not ToolTip) return true;
+        return false;
+    }
 
     public static FontIcon Glyph(string glyph, double size, Brush fg) =>
         new() { Glyph = glyph, FontFamily = new FontFamily("Segoe Fluent Icons"), FontSize = size, Foreground = fg };
@@ -48,6 +59,63 @@ public static class Ui
         Microsoft.UI.Xaml.Automation.AutomationProperties.SetName(b, tip);
         b.Click += (_, _) => click();
         return b;
+    }
+
+    static Microsoft.UI.Dispatching.DispatcherQueueTimer? freeTimer;
+
+    /// <summary>
+    /// Call after dropping a popup, dialog or page. Their native XAML objects are freed only when the managed wrappers
+    /// are collected, and an idle app may not collect for a long time. Measured: about +0.5 MB private per popup without
+    /// this. It runs a moment later, so closing stays instant and a run of popups costs one collection.
+    /// </summary>
+    public static void FreeSoon(Microsoft.UI.Dispatching.DispatcherQueue queue)
+    {
+        if (freeTimer is null)
+        {
+            freeTimer = queue.CreateTimer();
+            freeTimer.Interval = TimeSpan.FromMilliseconds(500);
+            freeTimer.IsRepeating = false;
+            freeTimer.Tick += (_, _) =>
+            {
+                GC.Collect();
+                GC.WaitForPendingFinalizers();
+                GC.Collect();
+            };
+        }
+        freeTimer.Stop();
+        freeTimer.Start();
+    }
+
+    /// <summary>A flat button that fills its row and shows only on hover (needs <see cref="StyleRowButtons"/> above it): menu rows, popup actions.</summary>
+    public static Button RowButton(object content, Action click)
+    {
+        var b = new Button
+        {
+            Content = content,
+            HorizontalAlignment = HorizontalAlignment.Stretch,
+            HorizontalContentAlignment = HorizontalAlignment.Stretch,
+            Padding = new Thickness(8, 4, 10, 5),
+            MinHeight = 0,
+            FontSize = 13,
+            BorderThickness = new Thickness(0),
+            CornerRadius = new CornerRadius(4),
+            UseSystemFocusVisuals = false,
+        };
+        b.Click += (_, _) => click();
+        return b;
+    }
+
+    /// <summary>The colors of <see cref="RowButton"/>, for everything under <paramref name="r"/>'s owner.</summary>
+    public static void StyleRowButtons(ResourceDictionary r)
+    {
+        var clear = new SolidColorBrush(Microsoft.UI.Colors.Transparent);
+        foreach (var key in new[] { "ButtonBackground", "ButtonBackgroundDisabled", "ButtonBorderBrush", "ButtonBorderBrushPointerOver", "ButtonBorderBrushPressed", "ButtonBorderBrushDisabled" })
+            Put(r, key, clear);
+        Put(r, "ButtonBackgroundPointerOver", Theme.Brush("ControlHover"));
+        Put(r, "ButtonBackgroundPressed", Theme.Brush("SelectedRow"));
+        foreach (var key in new[] { "ButtonForeground", "ButtonForegroundPointerOver", "ButtonForegroundPressed" })
+            Put(r, key, Theme.Brush("Text"));
+        Put(r, "ButtonForegroundDisabled", Theme.Brush("TextFaint"));
     }
 
     /// <summary>A dialog in armux's look (<see cref="ArmuxDialog"/>).</summary>
@@ -106,15 +174,6 @@ public static class Ui
     {
         r.Remove(key);
         r[key] = value;
-    }
-
-    /// <summary>Solid themed popup background. The default acrylic does not survive window capture.</summary>
-    public static Style SolidPresenter(Type target)
-    {
-        var s = new Style(target);
-        s.Setters.Add(new Setter(Control.BackgroundProperty, Theme.Brush("Palette")));
-        s.Setters.Add(new Setter(Control.BorderBrushProperty, Theme.Brush("Border")));
-        return s;
     }
 
     /// <summary>Outlined rectangle with an inner divider: the split-right / split-down / sidebar icons.</summary>

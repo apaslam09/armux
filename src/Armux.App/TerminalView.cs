@@ -1,3 +1,4 @@
+using Armux.Core;
 using Armux.Core.Vt;
 using Microsoft.UI.Input;
 using Microsoft.UI.Text;
@@ -49,6 +50,9 @@ public sealed partial class TerminalView : UserControl
     bool keyDownSeen;
     int wheelAccum, reportButton = -1;
     (int Col, int Row) lastReported = (-1, -1);
+    readonly WheelPacer wheelPacer = new();
+    Microsoft.UI.Dispatching.DispatcherQueueTimer? wheelTimer;
+    (int Col, int Row) wheelCell;
 
     public TerminalSession Session => session;
     /// <summary>Ctrl+wheel: +1 or -1 zoom step for the window.</summary>
@@ -427,7 +431,8 @@ public sealed partial class TerminalView : UserControl
         }
         // Something after the press moved focus away (reported: typing died after every click, and worked only
         // while the button was held). Take it back once the click has finished.
-        DispatcherQueue.TryEnqueue(() => { if (!hasFocus) Focus(FocusState.Pointer); });
+        // A menu the press opened keeps it.
+        DispatcherQueue.TryEnqueue(() => { if (!hasFocus && XamlRoot is { } root && !Ui.PopupOpen(root)) Focus(FocusState.Pointer); });
     }
 
     // ---- drag and drop -----------------------------------------------------------------------
@@ -462,14 +467,10 @@ public sealed partial class TerminalView : UserControl
 
     void ShowMenu(PointerRoutedEventArgs e)
     {
-        var menu = new MenuFlyout { MenuFlyoutPresenterStyle = Ui.SolidPresenter(typeof(MenuFlyoutPresenter)) };
-        var copy = new MenuFlyoutItem { Text = "Copy", IsEnabled = Ordered() is not null };
-        copy.Click += (_, _) => Copy();
-        var paste = new MenuFlyoutItem { Text = "Paste" };
-        paste.Click += (_, _) => _ = PasteAsync();
-        menu.Items.Add(copy);
-        menu.Items.Add(paste);
-        menu.ShowAt(this, e.GetCurrentPoint(this).Position);
+        var menu = new ArmuxMenu(this);
+        menu.Item("Copy", () => Copy(), enabled: Ordered() is not null);
+        menu.Item("Paste", () => _ = PasteAsync());
+        menu.Show(e.GetCurrentPoint(this).Position);
     }
 
     /// <summary>Copies the selection (Ctrl+Shift+C) and clears it, unless it is the automatic copy of a fresh selection. Returns false when nothing is selected.</summary>
@@ -526,27 +527,27 @@ public sealed partial class TerminalView : UserControl
     void OnWheel(object sender, PointerRoutedEventArgs e)
     {
         e.Handled = true;
-        // Precision touchpads send deltas below one notch (120); add them up so slow scrolls still move.
-        wheelAccum += e.GetCurrentPoint(this).Properties.MouseWheelDelta;
-        int notches = wheelAccum / 120;
-        if (Down(VirtualKey.Control))
+        int delta = e.GetCurrentPoint(this).Properties.MouseWheelDelta;
+        var term = session.Terminal;
+        if (!Down(VirtualKey.Control) && Reporting(e))
         {
-            if (notches != 0) { wheelAccum -= notches * 120; ZoomRequested?.Invoke(Math.Sign(notches)); }
+            wheelCell = ScreenCell(e);
+            ReportWheel(wheelPacer.Add(delta, Environment.TickCount64));
             return;
         }
-        var term = session.Terminal;
-        if (Reporting(e))
+        // Precision touchpads send deltas below one notch (120); add them up so slow scrolls still move.
+        wheelAccum += delta;
+        if (Down(VirtualKey.Control))
         {
-            if (notches == 0) return;
-            wheelAccum -= notches * 120;
-            for (int i = 0; i < Math.Abs(notches); i++) Report(notches > 0 ? MouseAction.WheelUp : MouseAction.WheelDown, -1, e);
+            int steps = wheelAccum / 120;
+            if (steps != 0) { wheelAccum -= steps * 120; ZoomRequested?.Invoke(Math.Sign(steps)); }
             return;
         }
         // Scrollback moves a line per 40 units: 3 lines per notch, and smooth on touchpads.
         int lines = wheelAccum / 40;
         if (lines == 0) return;
         wheelAccum -= lines * 40;
-        notches = lines;
+        int notches = lines;
         if (term.AltScreen)
         {
             // Full-screen programs without mouse support scroll with the arrow keys.
@@ -558,6 +559,28 @@ public sealed partial class TerminalView : UserControl
         viewTop = Math.Clamp(viewTop - notches, 0, sb);
         follow = viewTop >= sb;
         Render(force: false);
+    }
+
+    /// <summary>
+    /// Sends <paramref name="notches"/> wheel reports together (D-42): programs read them as one burst, whatever their
+    /// count, and a timer picks up a batch that has to wait for <see cref="WheelPacer.MinGapMs"/>.
+    /// </summary>
+    void ReportWheel(int notches)
+    {
+        var t = session.Terminal;
+        if (notches != 0 && MouseEncoder.Encode(t.Mouse, t.SgrMouse, notches > 0 ? MouseAction.WheelUp : MouseAction.WheelDown, -1,
+            wheelCell.Col, wheelCell.Row, Down(VirtualKey.Shift), Down(VirtualKey.Menu), Down(VirtualKey.Control)) is { } report)
+            session.Send(string.Concat(Enumerable.Repeat(report, Math.Abs(notches))));
+        int wait = wheelPacer.WaitMs(Environment.TickCount64);
+        if (wait < 0 || wheelTimer is { IsRunning: true }) return;
+        if (wheelTimer is null)
+        {
+            wheelTimer = DispatcherQueue.CreateTimer();
+            wheelTimer.IsRepeating = false;
+            wheelTimer.Tick += (_, _) => ReportWheel(wheelPacer.Take(Environment.TickCount64));
+        }
+        wheelTimer.Interval = TimeSpan.FromMilliseconds(Math.Max(1, wait));
+        wheelTimer.Start();
     }
 
     static bool Down(VirtualKey k) => InputKeyboardSource.GetKeyStateForCurrentThread(k).HasFlag(CoreVirtualKeyStates.Down);

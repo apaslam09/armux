@@ -81,8 +81,11 @@ public sealed class TerminalSession : IDisposable
         try
         {
             var kind = Shells.Parse(surface.Shell);
-            // Diagnostics: ARMUX_PTY_LOG=<file> records the raw ConPTY output and every resize.
-            var log = System.Environment.GetEnvironmentVariable("ARMUX_PTY_LOG") is { Length: > 0 } path ? File.Open(path, FileMode.Append, FileAccess.Write, FileShare.Read) : null;
+            // Diagnostics: ARMUX_PTY_LOG=<file> records the raw ConPTY output and every resize of the first terminal.
+            FileStream? log = null;
+            if (System.Environment.GetEnvironmentVariable("ARMUX_PTY_LOG") is { Length: > 0 } path)
+                try { log = File.Open(path, FileMode.Append, FileAccess.Write, FileShare.Read); }
+                catch (IOException) { /* another terminal is logging there; a log must not stop this one starting */ }
             ptyLog = log;
             Log($"[start {cols}x{rows}]");
             pty = PtySession.Start(ShellIntegration.CommandLine(kind), cwd, ShellIntegration.Environment(kind, environment), cols, rows,
