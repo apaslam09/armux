@@ -40,12 +40,14 @@ public sealed partial class PromptEditor : Grid
         var insert = new Button { Content = "Paste", Padding = new Thickness(10, 3, 10, 4), CornerRadius = new CornerRadius(5) };
         ToolTipService.SetToolTip(insert, "Paste into the terminal without Enter (Ctrl+Enter)");
         insert.Click += (_, _) => Submit(enter: false);
-        var send = new Button { Content = "Send", Padding = new Thickness(12, 3, 12, 4), CornerRadius = new CornerRadius(5), Style = (Style)Application.Current.Resources["AccentButtonStyle"] };
+        var send = new Button { Content = "Send", Padding = new Thickness(12, 3, 12, 4), CornerRadius = new CornerRadius(5) };
         ToolTipService.SetToolTip(send, "Paste and press Enter (Enter)");
-        // armux's accent, not the Windows accent color.
-        foreach (var key in new[] { "AccentButtonBackground", "AccentButtonBackgroundPointerOver", "AccentButtonBackgroundPressed" })
+        // armux's accent, not the Windows accent color. Colored here, not with AccentButtonStyle: under NativeAOT a Style
+        // read from the resources fails its cast once the app creates no Style of its own (it broke Ctrl+G in 0.4.2).
+        foreach (var key in new[] { "ButtonBackground", "ButtonBackgroundPointerOver", "ButtonBackgroundPressed" })
             send.Resources[key] = Theme.Brush("Accent");
-        send.Resources["AccentButtonForeground"] = send.Resources["AccentButtonForegroundPointerOver"] = Theme.Brush("SelectedText");
+        foreach (var key in new[] { "ButtonForeground", "ButtonForegroundPointerOver", "ButtonForegroundPressed" })
+            send.Resources[key] = Theme.Brush("SelectedText");
         send.Click += (_, _) => Submit(enter: true);
         buttons.Children.Add(insert);
         buttons.Children.Add(send);

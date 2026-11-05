@@ -15,12 +15,17 @@ public static class Ui
         ChevronUp = "\uE70E", Document = "\uE8A5", Code = "\uE943", Photo = "\uE91B", Gear = "\uE713", Page = "\uE7C3",
         Up = "\uE74A", Drive = "\uEDA2", Home = "\uE80F", Places = "\uE81D", Check = "\uE73E";
 
+    static ToolTip? knownToolTip;
+
     /// <summary>
     /// True while a dialog, menu or dropdown is open: it keeps the keyboard. A tooltip doesn't count. Hovering a button
     /// must not block anything, or focus that was lost under a tooltip was never given back.
     /// </summary>
     public static bool PopupOpen(XamlRoot root)
     {
+        // Under NativeAOT a XAML type the app never creates is not recognized when XAML hands one back, so `is ToolTip`
+        // was false for every tooltip and shortcuts stopped under one. Creating a ToolTip keeps the type.
+        knownToolTip ??= new ToolTip();
         foreach (var p in VisualTreeHelper.GetOpenPopupsForXamlRoot(root))
             if (p.Child is not ToolTip) return true;
         return false;

@@ -6,7 +6,7 @@ A terminal workspace app for **Windows 11 on ARM64**, modeled on [cmux](https://
 
 [![ci](https://github.com/apaslam09/armux/actions/workflows/ci.yml/badge.svg)](https://github.com/apaslam09/armux/actions/workflows/ci.yml)
 
-> **Status: 0.4.2.** PowerShell and cmd run through ConPTY in armux's own terminal emulator; OSC 9 / 99 / 777 light up notification rings, Windows toasts and the taskbar button, and an agent waiting for an answer turns orange; workspaces reopen on start; the browser loads real pages; the `armux` CLI talks to the app; a Zed-style Settings page (and settings.json) covers themes, fonts and every shortcut. See the [roadmap](ARCHITECTURE.md#roadmap).
+> **Status: 0.4.3.** PowerShell and cmd run through ConPTY in armux's own terminal emulator; OSC 9 / 99 / 777 light up notification rings, Windows toasts and the taskbar button, and an agent waiting for an answer turns orange; workspaces reopen on start; the browser loads real pages; the `armux` CLI talks to the app; a Zed-style Settings page (and settings.json) covers themes, fonts and every shortcut. See the [roadmap](ARCHITECTURE.md#roadmap).
 
 ![armux with two PowerShell panes, the file explorer and a notification ring](docs/screenshots/13-live-shells.png)
 

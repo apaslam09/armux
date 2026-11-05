@@ -273,7 +273,9 @@ public sealed partial class MainWindow
         if (chord.IsTextEditing && FocusManager.GetFocusedElement(xamlRoot)
             is Microsoft.UI.Xaml.Controls.TextBox or Microsoft.UI.Xaml.Controls.PasswordBox or Microsoft.UI.Xaml.Controls.RichEditBox) return false;
         lastChord = (chord, Environment.TickCount64);
-        return RunChord(chord);
+        // A shortcut that fails still owns its key: passing it on would run the program's own Ctrl+G, say.
+        try { return RunChord(chord); }
+        catch (Exception e) { App.Log(nameof(OnKey), e); return true; }
     }
 
     static readonly Chord CtrlL = new(true, false, false, "L");
