@@ -13,6 +13,13 @@ public enum TermKey
 /// </summary>
 public static class KeyEncoder
 {
+    /// <summary>
+    /// Shift+Enter for a full-screen program (mouse tracking or the alternate screen), which can't tell a plain CR from
+    /// Enter. <c>CSI 13;2u</c> reaches Claude Code through ConPTY as a new line. At a shell prompt ConPTY swallows it, so
+    /// shells keep the plain CR and Shift+Enter still runs the line there. Null means send nothing special.
+    /// </summary>
+    public static string? ShiftEnter(bool altScreen, MouseTracking mouse) => altScreen || mouse != MouseTracking.None ? "\u001b[13;2u" : null;
+
     public static string Encode(TermKey key, bool shift, bool alt, bool ctrl, bool appCursorKeys)
     {
         int mod = 1 + (shift ? 1 : 0) + (alt ? 2 : 0) + (ctrl ? 4 : 0);

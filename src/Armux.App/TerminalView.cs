@@ -589,6 +589,14 @@ public sealed partial class TerminalView : UserControl
     {
         bool shift = Down(VirtualKey.Shift), ctrl = Down(VirtualKey.Control), alt = Down(VirtualKey.Menu);
         if (e.Key == VirtualKey.Insert && shift && !ctrl) { _ = PasteAsync(); e.Handled = true; return; }
+        if (e.Key == VirtualKey.Enter && shift && !ctrl && !alt && KeyEncoder.ShiftEnter(session.Terminal.AltScreen, session.Terminal.Mouse) is { } newLine)
+        {
+            // The CR that follows finds keyDownSeen false and is dropped.
+            keyDownSeen = false;
+            e.Handled = true;
+            SendInput(newLine);
+            return;
+        }
         TermKey? key = e.Key switch
         {
             VirtualKey.Up => TermKey.Up, VirtualKey.Down => TermKey.Down, VirtualKey.Right => TermKey.Right, VirtualKey.Left => TermKey.Left,

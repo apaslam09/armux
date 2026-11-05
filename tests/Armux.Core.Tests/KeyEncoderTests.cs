@@ -35,4 +35,12 @@ public sealed class KeyEncoderTests
         Assert.AreEqual("\u001bb", KeyEncoder.Text("b", alt: true, ctrl: false));   // Alt+B: word back in readline
         Assert.AreEqual("@", KeyEncoder.Text("@", alt: true, ctrl: true));        // AltGr+Q on a German layout
     }
+
+    [TestMethod]
+    public void ShiftEnterIsDistinctOnlyInFullScreenPrograms()
+    {
+        Assert.IsNull(KeyEncoder.ShiftEnter(altScreen: false, MouseTracking.None));
+        Assert.AreEqual("\u001b[13;2u", KeyEncoder.ShiftEnter(altScreen: true, MouseTracking.None));
+        Assert.AreEqual("\u001b[13;2u", KeyEncoder.ShiftEnter(altScreen: false, MouseTracking.Any));
+    }
 }
