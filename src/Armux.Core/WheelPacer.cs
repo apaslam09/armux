@@ -13,7 +13,7 @@ public sealed class WheelPacer
     public const int Notch = 120;
     /// <summary>Above the 80 ms where Claude Code stops accelerating, with room for timer and pipe jitter.</summary>
     public const int MinGapMs = 100;
-    /// <summary>The most notches in a batch: the program's top scroll speed.</summary>
+    /// <summary>The most notches in a batch, which sets the top scroll speed (about 80 rows a second in Claude Code).</summary>
     public const int MaxBatch = 6;
 
     int pending, lastDirection;
