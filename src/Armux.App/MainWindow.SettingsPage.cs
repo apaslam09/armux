@@ -517,6 +517,10 @@ public sealed partial class MainWindow
         body.Children.Add(Card("Blinking cursor", "Off saves a little CPU: a steady cursor never redraws.",
             Switch(s.CursorBlink, on => ChangeSettings(x => x with { CursorBlink = on }))));
 
+        body.Children.Add(GroupHeader("Scrolling"));
+        body.Children.Add(Card("Smooth scrolling", "Rows slide into place over about 90 ms when you scroll, in the scrollback and in Claude Code.",
+            Switch(s.SmoothScroll, on => ChangeSettings(x => x with { SmoothScroll = on }))));
+
         body.Children.Add(GroupHeader("History"));
         int[] sizes = [1000, 5000, 10_000, 50_000, 100_000];
         int at = Array.IndexOf(sizes, s.ScrollbackLines);

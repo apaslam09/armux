@@ -57,6 +57,8 @@ public sealed record Settings
     /// <summary>Line height as a multiple of the font size.</summary>
     public double LineHeight { get; set; } = 1.4;
     public bool Ligatures { get; set; } = true;
+    /// <summary>Slide the rows into place when the view scrolls (D-45).</summary>
+    public bool SmoothScroll { get; set; } = true;
     /// <summary>"block", "bar" or "underline".</summary>
     public string CursorStyle { get; set; } = "block";
     public bool CursorBlink { get; set; }
