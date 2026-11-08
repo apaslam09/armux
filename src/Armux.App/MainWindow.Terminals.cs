@@ -51,6 +51,8 @@ public sealed partial class MainWindow
             // armux.com (the CLI) ships next to armux.exe, so `armux notify` works in every armux terminal.
             ["PATH"] = AppContext.BaseDirectory.TrimEnd('\\') + ";" + Environment.GetEnvironmentVariable("PATH"),
         };
+        // With Claude Code's wheel acceleration off, its speed is a fixed number of rows per notch: the one from Settings.
+        if (ClaudeWheel.AccelerationOff()) env["CLAUDE_CODE_SCROLL_SPEED"] = Theme.Settings.WheelRows.ToString();
         s = new TerminalSession(surface, DispatcherQueue, cwd, env);
         // Programs that ask for the colors (OSC 10 / 11; Claude Code does) pick a matching light or dark theme.
         s.Terminal.ReportedBackground = Theme.Dark ? 0x262626u : 0xFFFFFFu;

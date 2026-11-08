@@ -518,8 +518,14 @@ public sealed partial class MainWindow
             Switch(s.CursorBlink, on => ChangeSettings(x => x with { CursorBlink = on }))));
 
         body.Children.Add(GroupHeader("Scrolling"));
-        body.Children.Add(Card("Scroll speed", "Top speed in rows a second, 50 to 200. Caps the wheel in Claude Code and scales it in the scrollback.",
-            Stepper(() => $"{Theme.Settings.ScrollSpeed} rows/s", d => ChangeSettings(x => x with { ScrollSpeed = x.ScrollSpeed + d * 10 }))));
+        body.Children.Add(Card("Scroll speed", "Rows per wheel notch, 1 to 20 (Claude Code's own default is 3). In Claude Code it applies to terminals opened from now on, and only with steady scrolling on.",
+            Stepper(() => $"{Theme.Settings.WheelRows} rows", d => ChangeSettings(x => x with { WheelRows = x.WheelRows + d }))));
+        body.Children.Add(Card("Steady scrolling in Claude Code", "Turns off Claude Code's wheel acceleration, so every notch scrolls the same and a fast flick cannot run to the top. Sets wheelScrollAccelerationEnabled in ~/.claude/settings.json (a backup is kept next to it). While off, armux holds wheel events back instead.",
+            Switch(ClaudeWheel.AccelerationOff(), on =>
+            {
+                try { ClaudeWheel.SetAccelerationOff(on); }
+                catch (Exception e) when (e is IOException or UnauthorizedAccessException or System.Text.Json.JsonException) { App.Log(nameof(ClaudeWheel.SetAccelerationOff), e); }
+            })));
 
         body.Children.Add(GroupHeader("History"));
         int[] sizes = [1000, 5000, 10_000, 50_000, 100_000];

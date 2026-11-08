@@ -48,7 +48,7 @@ public sealed partial class TerminalView : UserControl
     (int Line, int Col)? selA, selB;
     char highSurrogate;
     bool keyDownSeen;
-    int wheelAccum, reportButton = -1;
+    int wheelAccum, reportAccum, reportButton = -1;
     (int Col, int Row) lastReported = (-1, -1);
     readonly WheelPacer wheelPacer = new();
     Microsoft.UI.Dispatching.DispatcherQueueTimer? wheelTimer;
@@ -531,8 +531,17 @@ public sealed partial class TerminalView : UserControl
         var term = session.Terminal;
         if (!Down(VirtualKey.Control) && Reporting(e))
         {
-            wheelPacer.Batch = WheelPacer.BatchFor(Theme.Settings.ScrollSpeed);
             wheelCell = ScreenCell(e);
+            if (ClaudeWheel.AccelerationOff())
+            {
+                // Claude Code scrolls a fixed number of rows per event, so notches go straight through (touchpad fractions add up).
+                if (reportAccum != 0 && Math.Sign(delta) != Math.Sign(reportAccum)) reportAccum = 0;
+                reportAccum += delta;
+                int steps = reportAccum / WheelPacer.Notch;
+                reportAccum -= steps * WheelPacer.Notch;
+                ReportWheel(steps);
+                return;
+            }
             ReportWheel(wheelPacer.Add(delta, Environment.TickCount64));
             return;
         }
@@ -544,8 +553,8 @@ public sealed partial class TerminalView : UserControl
             if (steps != 0) { wheelAccum -= steps * 120; ZoomRequested?.Invoke(Math.Sign(steps)); }
             return;
         }
-        // Scrollback moves a line per 40 units at the default 80 rows/s (3 lines per notch), scaled by Scroll speed; fine steps suit touchpads.
-        int unit = 40 * Settings.DefaultScrollSpeed / Math.Max(1, Theme.Settings.ScrollSpeed);
+        // Scrollback moves Scroll speed rows per notch (3 by default); fine steps suit touchpads.
+        int unit = Math.Max(1, WheelPacer.Notch / Math.Max(1, Theme.Settings.WheelRows));
         int lines = wheelAccum / unit;
         if (lines == 0) return;
         wheelAccum -= lines * unit;

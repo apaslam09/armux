@@ -15,7 +15,7 @@ public sealed record Settings
     public const string DefaultUiFont = "IBM Plex Sans";
     public const double DefaultTerminalFontSize = 13, MinFontSize = 8, MaxFontSize = 32;
     public const double MinZoom = 0.7, MaxZoom = 2.0;
-    public const int DefaultScrollSpeed = 80, MinScrollSpeed = 50, MaxScrollSpeed = 200;
+    public const int DefaultWheelRows = 3, MinWheelRows = 1, MaxWheelRows = 20;
     public const int DefaultScrollback = 5000, MinScrollback = 500, MaxScrollback = 100_000;
 
     public static readonly string[] Themes = ["system", "dark", "light", "high-contrast"];
@@ -58,8 +58,8 @@ public sealed record Settings
     /// <summary>Line height as a multiple of the font size.</summary>
     public double LineHeight { get; set; } = 1.4;
     public bool Ligatures { get; set; } = true;
-    /// <summary>Top scroll speed in rows a second, in steps of 10 (D-45). 80 is what armux did before the setting.</summary>
-    public int ScrollSpeed { get; set; } = DefaultScrollSpeed;
+    /// <summary>Rows per wheel notch (D-45): in the scrollback, and in Claude Code through CLAUDE_CODE_SCROLL_SPEED while its wheel acceleration is off. 3 is Claude Code's default.</summary>
+    public int WheelRows { get; set; } = DefaultWheelRows;
     /// <summary>"block", "bar" or "underline".</summary>
     public string CursorStyle { get; set; } = "block";
     public bool CursorBlink { get; set; }
@@ -104,7 +104,7 @@ public sealed record Settings
             : DefaultTerminalFontSize,
         LineHeight = double.IsFinite(LineHeight) ? Math.Clamp(Math.Round(LineHeight * 20) / 20, 1.0, 2.0) : 1.4,
         ScrollbackLines = Math.Clamp(ScrollbackLines, MinScrollback, MaxScrollback),
-        ScrollSpeed = Math.Clamp((int)Math.Round(ScrollSpeed / 10.0) * 10, MinScrollSpeed, MaxScrollSpeed),
+        WheelRows = Math.Clamp(WheelRows, MinWheelRows, MaxWheelRows),
         Keybindings = Keybindings is null ? [] : new Dictionary<string, string>(Keybindings),
     };
 

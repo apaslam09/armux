@@ -15,10 +15,6 @@ public sealed class WheelPacer
     public const int MinGapMs = 100;
     /// <summary>The most notches in a batch, which sets the top scroll speed (about 80 rows a second in Claude Code).</summary>
     public const int MaxBatch = 6;
-    /// <summary>Notches per batch for a top speed in rows a second: Claude Code reads a batch of n notches as n + 2 rows.</summary>
-    public static int BatchFor(int rowsPerSecond) => Math.Clamp((int)Math.Round(rowsPerSecond * MinGapMs / 1000.0) - 2, 1, 18);
-    /// <summary>Notches allowed in one batch; <see cref="BatchFor"/> of the Scroll speed setting.</summary>
-    public int Batch { get; set; } = MaxBatch;
 
     int pending, lastDirection;
     long lastSent;
@@ -27,7 +23,7 @@ public sealed class WheelPacer
     public int Add(int delta, long nowMs)
     {
         if (pending != 0 && Math.Sign(delta) != Math.Sign(pending)) pending = 0;
-        pending = Math.Clamp(pending + delta, -Batch * Notch, Batch * Notch);
+        pending = Math.Clamp(pending + delta, -MaxBatch * Notch, MaxBatch * Notch);
         return Take(nowMs);
     }
 
