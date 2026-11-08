@@ -609,6 +609,7 @@ public sealed partial class TerminalView : UserControl
         var term = session.Terminal;
         if (!Down(VirtualKey.Control) && Reporting(e))
         {
+            wheelPacer.Batch = WheelPacer.BatchFor(Theme.Settings.ScrollSpeed);
             wheelCell = ScreenCell(e);
             ReportWheel(wheelPacer.Add(delta, Environment.TickCount64));
             return;
@@ -621,10 +622,11 @@ public sealed partial class TerminalView : UserControl
             if (steps != 0) { wheelAccum -= steps * 120; ZoomRequested?.Invoke(Math.Sign(steps)); }
             return;
         }
-        // Scrollback moves a line per 40 units: 3 lines per notch, and smooth on touchpads.
-        int lines = wheelAccum / 40;
+        // Scrollback moves a line per 40 units at the default 80 rows/s (3 lines per notch), scaled by Scroll speed; fine steps suit touchpads.
+        int unit = 40 * Settings.DefaultScrollSpeed / Math.Max(1, Theme.Settings.ScrollSpeed);
+        int lines = wheelAccum / unit;
         if (lines == 0) return;
-        wheelAccum -= lines * 40;
+        wheelAccum -= lines * unit;
         int notches = lines;
         if (term.AltScreen)
         {

@@ -84,4 +84,13 @@ public class WheelPacerTests
         Assert.AreEqual(-1, p.WaitMs(Start + 20));
         Assert.AreEqual(0, p.Take(Start + 500));
     }
-}
+
+    [TestMethod]
+    public void BatchFollowsTheSpeedSetting()
+    {
+        Assert.AreEqual(3, WheelPacer.BatchFor(50));
+        Assert.AreEqual(WheelPacer.MaxBatch, WheelPacer.BatchFor(80));
+        Assert.AreEqual(18, WheelPacer.BatchFor(200));
+        var p = new WheelPacer { Batch = WheelPacer.BatchFor(200) };
+        Assert.AreEqual(18, p.Add(120 * 40, Start));
+    }}

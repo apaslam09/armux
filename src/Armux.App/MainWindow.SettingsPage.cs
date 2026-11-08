@@ -518,6 +518,8 @@ public sealed partial class MainWindow
             Switch(s.CursorBlink, on => ChangeSettings(x => x with { CursorBlink = on }))));
 
         body.Children.Add(GroupHeader("Scrolling"));
+        body.Children.Add(Card("Scroll speed", "Top speed in rows a second, 50 to 200. Caps the wheel in Claude Code and scales it in the scrollback.",
+            Stepper(() => $"{Theme.Settings.ScrollSpeed} rows/s", d => ChangeSettings(x => x with { ScrollSpeed = x.ScrollSpeed + d * 10 }))));
         body.Children.Add(Card("Smooth scrolling", "Rows slide into place over about 90 ms when you scroll, in the scrollback and in Claude Code.",
             Switch(s.SmoothScroll, on => ChangeSettings(x => x with { SmoothScroll = on }))));
 
