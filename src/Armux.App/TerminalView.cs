@@ -84,7 +84,7 @@ public sealed partial class TerminalView : UserControl
         MeasureCell();
         resize = new DebounceTimer(DispatcherQueue, TimeSpan.FromMilliseconds(60), ApplySize);
         blink = new Blinker(this);
-        bar.Scroll += (_, e) => { scrollInputAt = Environment.TickCount64; viewTop = (int)Math.Round(e.NewValue); follow = viewTop >= ScrollbackCount(); Render(force: false); };
+        bar.Scroll += (_, e) => { viewTop = (int)Math.Round(e.NewValue); follow = viewTop >= ScrollbackCount(); Render(force: false); };
 
         SizeChanged += (_, _) => { if (!session.Started) ApplySize(); else resize.Restart(); };
         Loaded += (_, _) => { session.Changed -= OnChanged; session.Changed += OnChanged; Render(force: true); };
@@ -169,26 +169,14 @@ public sealed partial class TerminalView : UserControl
             lastVersion = term.Version;
             lastViewTop = viewTop;
 
-            // A redraw soon after wheel or scroll input is checked for a scroll, so its rows can slide (D-45).
-            int[]? fresh = null;
-            ScrollShift.Result? scroll = null;
-            if (!force && Theme.Settings.SmoothScroll && Environment.TickCount64 - scrollInputAt < ScrollWindowMs)
-            {
-                fresh = new int[rows];
-                for (int r = 0; r < rows; r++) { term.ReadLine(viewTop + r, line); fresh[r] = Hash(line); }
-                scroll = ScrollShift.Find(rowHash, fresh);
-            }
-            FinishScrollAnim();
-
             for (int r = 0; r < rows; r++)
             {
                 term.ReadLine(viewTop + r, line);
-                int hash = fresh?[r] ?? Hash(line);
+                int hash = Hash(line);
                 if (!force && !moved && hash == rowHash[r]) continue;
                 rowHash[r] = hash;
                 DrawRow(r);
             }
-            if (scroll is { } s) StartScrollAnim(s);
 
             bar.Maximum = sb;
             bar.ViewportSize = rows;
@@ -232,76 +220,12 @@ public sealed partial class TerminalView : UserControl
         }
     }
 
-    /// <summary>Text, background and attributes of a row; equal hashes skip redrawing it. A blank row hashes to 0.</summary>
+    /// <summary>Text, background and attributes of a row; equal hashes skip redrawing it.</summary>
     static int Hash(Cell[] cells)
     {
-        bool blank = true;
         var h = new HashCode();
-        foreach (var c in cells) { h.Add(c.Rune); h.Add(c.Attr); if (c != Cell.Blank) blank = false; }
-        return blank ? 0 : h.ToHashCode() | 1;
-    }
-
-    // ---- smooth scrolling (D-45) ---------------------------------------------------------------
-
-    const long ScrollWindowMs = 300;
-    const double ScrollAnimMs = 90;
-    long scrollInputAt, scrollAnimStart;
-    readonly List<(UIElement El, TranslateTransform T, double From)> scrollMoves = [];
-    readonly List<UIElement> scrollEntering = [];
-    Microsoft.UI.Dispatching.DispatcherQueueTimer? scrollTimer;
-
-    /// <summary>Rows that moved by <paramref name="s"/> start at their old place and slide to the new one; rows that scrolled in fade in.</summary>
-    void StartScrollAnim(ScrollShift.Result s)
-    {
-        double from = s.Shift * cellH;
-        for (int r = s.First; r <= s.Last && r < rowBlocks.Length; r++)
-        {
-            if (r < s.MovedFirst || r > s.MovedLast)
-            {
-                rowBlocks[r].Opacity = 0;
-                scrollEntering.Add(rowBlocks[r]);
-                foreach (var rect in rowRects[r]) { rect.Opacity = 0; scrollEntering.Add(rect); }
-                continue;
-            }
-            Slide(rowBlocks[r], from);
-            foreach (var rect in rowRects[r]) Slide(rect, from);
-        }
-        scrollAnimStart = Environment.TickCount64;
-        if (scrollTimer is null)
-        {
-            scrollTimer = DispatcherQueue.CreateTimer();
-            scrollTimer.Interval = TimeSpan.FromMilliseconds(16);
-            scrollTimer.IsRepeating = true;
-            scrollTimer.Tick += (_, _) => ScrollAnimTick();
-        }
-        scrollTimer.Start();
-    }
-
-    void Slide(UIElement el, double from)
-    {
-        var t = new TranslateTransform { Y = from };
-        el.RenderTransform = t;
-        scrollMoves.Add((el, t, from));
-    }
-
-    void ScrollAnimTick()
-    {
-        double t = (Environment.TickCount64 - scrollAnimStart) / ScrollAnimMs;
-        if (t >= 1) { FinishScrollAnim(); return; }
-        double e = 1 - (1 - t) * (1 - t) * (1 - t);
-        foreach (var (_, tr, from) in scrollMoves) tr.Y = from * (1 - e);
-        foreach (var el in scrollEntering) el.Opacity = e;
-    }
-
-    /// <summary>Puts every animated row at its final place; also called before each redraw.</summary>
-    void FinishScrollAnim()
-    {
-        if (scrollMoves.Count == 0 && scrollEntering.Count == 0) return;
-        scrollTimer?.Stop();
-        foreach (var (el, _, _) in scrollMoves) el.RenderTransform = null;
-        foreach (var el in scrollEntering) el.Opacity = 1;
-        scrollMoves.Clear();
-        scrollEntering.Clear();
+        foreach (var c in cells) { h.Add(c.Rune); h.Add(c.Attr); }
+        return h.ToHashCode();
     }
 
     /// <summary>Rebuilds row <paramref name="r"/> from <see cref="line"/>: runs of equal style, and background rectangles.</summary>
@@ -580,7 +504,6 @@ public sealed partial class TerminalView : UserControl
     /// </summary>
     public void ScrollBy(int lines)
     {
-        scrollInputAt = Environment.TickCount64;
         int sb = ScrollbackCount();
         if (lines == int.MinValue) viewTop = 0;
         else if (lines == int.MaxValue) viewTop = sb;
@@ -604,7 +527,6 @@ public sealed partial class TerminalView : UserControl
     void OnWheel(object sender, PointerRoutedEventArgs e)
     {
         e.Handled = true;
-        scrollInputAt = Environment.TickCount64;
         int delta = e.GetCurrentPoint(this).Properties.MouseWheelDelta;
         var term = session.Terminal;
         if (!Down(VirtualKey.Control) && Reporting(e))

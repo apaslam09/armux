@@ -58,8 +58,6 @@ public sealed record Settings
     /// <summary>Line height as a multiple of the font size.</summary>
     public double LineHeight { get; set; } = 1.4;
     public bool Ligatures { get; set; } = true;
-    /// <summary>Slide the rows into place when the view scrolls (D-45).</summary>
-    public bool SmoothScroll { get; set; } = true;
     /// <summary>Top scroll speed in rows a second, in steps of 10 (D-45). 80 is what armux did before the setting.</summary>
     public int ScrollSpeed { get; set; } = DefaultScrollSpeed;
     /// <summary>"block", "bar" or "underline".</summary>
