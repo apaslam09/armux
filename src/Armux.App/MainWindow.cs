@@ -64,9 +64,16 @@ public sealed partial class MainWindow : Window, IPaneHost, IExplorerHost
     {
         double k = Theme.Settings.Zoom;
         if (size.Width <= 0 || size.Height <= 0) return;
-        root.Width = size.Width / k;
-        root.Height = size.Height / k;
-        UpdateMinSize();
+        // Runs from SizeChanged, i.e. inside a layout pass: only touch the layout when the size really changed,
+        // and move the window-size work (AppWindow.Resize, title margin) out of the pass. Doing it inline made
+        // zoom 1.2 hit a LayoutCycleException on start-up and on resize.
+        double w = size.Width / k, h = size.Height / k;
+        if (!(Math.Abs(root.Width - w) < 0.01 && Math.Abs(root.Height - h) < 0.01))
+        {
+            root.Width = w;
+            root.Height = h;
+        }
+        DispatcherQueue.TryEnqueue(UpdateMinSize);
     }
 
     /// <summary>Title space kept beside the title bar's buttons: folder icon plus a few characters of the title.</summary>
